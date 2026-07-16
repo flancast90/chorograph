@@ -4,7 +4,7 @@
  * @chorograph group="Viewer" role=component comms=in-proc
  */
 import type { GraphIndex } from "./index-graph.ts";
-import { roleColor, theme } from "./theme.ts";
+import { DETAIL_WIDTH, PANEL_INSET, roleColor, theme } from "./theme.ts";
 
 interface Props {
   index: GraphIndex;
@@ -35,10 +35,10 @@ export function DetailPanel({ index, selected, onNavigate, onClose }: Props) {
       data-ui
       style={{
         position: "absolute",
-        top: 12,
-        right: 12,
-        width: 320,
-        maxHeight: "calc(100% - 24px)",
+        top: PANEL_INSET,
+        right: PANEL_INSET,
+        width: DETAIL_WIDTH,
+        maxHeight: `calc(100% - ${PANEL_INSET * 2}px)`,
         overflow: "auto",
         background: theme.panel,
         border: `1px solid ${theme.border}`,

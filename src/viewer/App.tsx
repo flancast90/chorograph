@@ -7,24 +7,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./Canvas.tsx";
 import { ControlPanel } from "./ControlPanel.tsx";
 import { DetailPanel } from "./DetailPanel.tsx";
-import { useCamera, useKeyboard } from "./hooks.ts";
+import { useCamera, useKeyboard, type ViewInsets } from "./hooks.ts";
 import {
   buildIndex,
-  defaultExpanded,
   expandToReveal,
   searchNodes,
+  seedExpanded,
   visibleFrontier,
 } from "./index-graph.ts";
 import { buildScene, type Scene } from "./layout.ts";
 import { rollupEdges } from "./rollup.ts";
-import { SHALLOW_EXPAND_MAX, theme } from "./theme.ts";
+import { DETAIL_WIDTH, PANEL_INSET, PANEL_WIDTH, SHALLOW_EXPAND_MAX, theme } from "./theme.ts";
 import type { Filters, Graph, RolledEdge } from "./types.ts";
 
 const emptyFilters: Filters = { roles: new Set(), comms: new Set(), deadOnly: false };
 
 export function App({ graph }: { graph: Graph }) {
   const index = useMemo(() => buildIndex(graph), [graph]);
-  const [expanded, setExpanded] = useState(() => defaultExpanded(index, SHALLOW_EXPAND_MAX));
+  const seeded = useMemo(() => seedExpanded(index), [index]);
+  const [expanded, setExpanded] = useState(() => seeded.expanded);
+  const [childCaps, setChildCaps] = useState(() => seeded.childCaps);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(emptyFilters);
@@ -39,7 +42,20 @@ export function App({ graph }: { graph: Graph }) {
   const fittedOnce = useRef(false);
   const layoutGen = useRef(0);
 
-  const visible = useMemo(() => visibleFrontier(index, expanded, filters), [index, expanded, filters]);
+  const insets: ViewInsets = useMemo(
+    () => ({
+      left: panelOpen ? PANEL_INSET + PANEL_WIDTH + PANEL_INSET : PANEL_INSET + 40,
+      right: selected ? PANEL_INSET + DETAIL_WIDTH + PANEL_INSET : PANEL_INSET,
+      top: PANEL_INSET,
+      bottom: PANEL_INSET,
+    }),
+    [panelOpen, selected],
+  );
+
+  const visible = useMemo(
+    () => visibleFrontier(index, expanded, filters, childCaps),
+    [index, expanded, filters, childCaps],
+  );
 
   const matches = useMemo(() => {
     if (!search.trim()) return [] as ReturnType<typeof searchNodes>;
@@ -57,7 +73,7 @@ export function App({ graph }: { graph: Graph }) {
   useEffect(() => {
     const gen = ++layoutGen.current;
     setLayouting(true);
-    const vis = visibleFrontier(index, expanded, filters);
+    const vis = visibleFrontier(index, expanded, filters, childCaps);
     const rolledNow = rollupEdges(index, vis);
     void buildScene(index, expanded, vis, rolledNow).then((s) => {
       if (gen !== layoutGen.current) return;
@@ -65,7 +81,7 @@ export function App({ graph }: { graph: Graph }) {
       setScene(s);
       setLayouting(false);
     });
-  }, [index, expanded, filters]);
+  }, [index, expanded, filters, childCaps]);
 
   // Measure viewport.
   useEffect(() => {
@@ -80,12 +96,26 @@ export function App({ graph }: { graph: Graph }) {
     return () => ro.disconnect();
   }, []);
 
+  const fitScene = useCallback(() => {
+    if (!scene) return;
+    fit({ width: scene.width, height: scene.height }, view, insets);
+  }, [scene, fit, view, insets]);
+
   // Fit once after first scene.
   useEffect(() => {
     if (!scene || fittedOnce.current) return;
     fittedOnce.current = true;
-    fit({ width: scene.width, height: scene.height }, view);
-  }, [scene, fit, view]);
+    fit({ width: scene.width, height: scene.height }, view, insets);
+  }, [scene, fit, view, insets]);
+
+  // Re-frame when panel chrome toggles (after initial fit).
+  const prevPanel = useRef(panelOpen);
+  useEffect(() => {
+    if (!fittedOnce.current || !scene) return;
+    if (prevPanel.current === panelOpen) return;
+    prevPanel.current = panelOpen;
+    fit({ width: scene.width, height: scene.height }, view, insets);
+  }, [panelOpen, scene, fit, view, insets]);
 
   const connected = useMemo(() => {
     const focus = selected ?? hovered;
@@ -104,6 +134,13 @@ export function App({ graph }: { graph: Graph }) {
       else next.add(id);
       return next;
     });
+    // Manual expand lifts the seed preview cap so the user can drill the full set.
+    setChildCaps((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   const pendingFocus = useRef<string | null>(null);
@@ -114,9 +151,9 @@ export function App({ graph }: { graph: Graph }) {
       setExpanded((prev) => expandToReveal(index, [id], prev));
       setSelected(id);
       const box = scene?.byId.get(id);
-      if (box) focusBox(box, view);
+      if (box) focusBox(box, view, insets);
     },
-    [index, scene, focusBox, view],
+    [index, scene, focusBox, view, insets],
   );
 
   // After expand-to-reveal finishes laying out, focus the pending node once.
@@ -125,10 +162,10 @@ export function App({ graph }: { graph: Graph }) {
     if (!id || !scene) return;
     const box = scene.byId.get(id);
     if (box) {
-      focusBox(box, view);
+      focusBox(box, view, insets);
       pendingFocus.current = null;
     }
-  }, [scene, focusBox, view]);
+  }, [scene, focusBox, view, insets]);
 
   const walkables = useMemo(() => {
     if (!scene) return [] as string[];
@@ -139,10 +176,13 @@ export function App({ graph }: { graph: Graph }) {
   }, [scene]);
 
   useKeyboard({
-    onSearch: () => searchRef.current?.focus(),
-    onFit: () => {
-      if (scene) fit({ width: scene.width, height: scene.height }, view);
+    onSearch: () => {
+      if (!panelOpen) setPanelOpen(true);
+      // Focus after panel mounts.
+      requestAnimationFrame(() => searchRef.current?.focus());
     },
+    onFit: fitScene,
+    onTogglePanel: () => setPanelOpen((o) => !o),
     onEscape: () => {
       if (document.activeElement === searchRef.current) {
         searchRef.current?.blur();
@@ -163,8 +203,6 @@ export function App({ graph }: { graph: Graph }) {
     },
     onEnter: () => {
       if (!selected) return;
-      const node = index.byId.get(selected);
-      if (!node) return;
       const kids = index.children.get(selected);
       if (kids && kids.length > 0) toggleExpand(selected);
     },
@@ -175,19 +213,24 @@ export function App({ graph }: { graph: Graph }) {
       const roles = new Set(f.roles);
       if (roles.has(role)) roles.delete(role);
       else roles.add(role);
-      // Filtering to a role expands matching subtrees so results aren't hidden —
-      // but never auto-opens huge containers (see expandToReveal cap).
       if (roles.has(role)) {
         const ids = index.graph.nodes.filter((n) => n.roles.includes(role)).map((n) => n.id);
         setExpanded((prev) => {
           let next = expandToReveal(index, ids.slice(0, 80), prev);
-          // If hits live under a huge collapsed region, expand it once filters will
-          // prune children to matches only.
           for (const id of ids.slice(0, 20)) {
             for (const a of index.ancestors(id)) {
               const kids = index.children.get(a)?.length ?? 0;
               if (kids > SHALLOW_EXPAND_MAX) next.add(a);
             }
+          }
+          return next;
+        });
+        // Drop seed caps on huge ancestors so filter pruning owns the frontier.
+        setChildCaps((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Map(prev);
+          for (const id of ids.slice(0, 20)) {
+            for (const a of index.ancestors(id)) next.delete(a);
           }
           return next;
         });
@@ -223,7 +266,6 @@ export function App({ graph }: { graph: Graph }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onClick={(e) => {
-        // Only clear when the click is on the empty stage, not bubbled from panels/nodes.
         if ((e.target as HTMLElement).closest("[data-node], [data-ui]")) return;
         setSelected(null);
       }}
@@ -253,6 +295,8 @@ export function App({ graph }: { graph: Graph }) {
         search={search}
         matchCount={matches.length}
         visibleCount={visible.size}
+        open={panelOpen}
+        onToggleOpen={() => setPanelOpen((o) => !o)}
         onSearch={setSearch}
         onToggleRole={toggleRole}
         onToggleComms={toggleComms}

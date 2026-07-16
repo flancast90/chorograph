@@ -1,12 +1,13 @@
 /**
  * Control rail: search, role/comms filters, dead toggle, legend counts.
+ * Collapsible — `[` toggles; fit-view subtracts panel width when open.
  *
  * @chorograph group="Viewer" role=component comms=in-proc
  */
 import { forwardRef, useMemo } from "react";
 import type { GraphIndex } from "./index-graph.ts";
 import type { Filters } from "./types.ts";
-import { roleColor, theme } from "./theme.ts";
+import { PANEL_INSET, PANEL_WIDTH, roleColor, theme } from "./theme.ts";
 
 interface Props {
   index: GraphIndex;
@@ -14,6 +15,8 @@ interface Props {
   search: string;
   matchCount: number;
   visibleCount: number;
+  open: boolean;
+  onToggleOpen: () => void;
   onSearch: (q: string) => void;
   onToggleRole: (role: string) => void;
   onToggleComms: (comms: string) => void;
@@ -28,6 +31,8 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
     search,
     matchCount,
     visibleCount,
+    open,
+    onToggleOpen,
     onSearch,
     onToggleRole,
     onToggleComms,
@@ -43,15 +48,43 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
   const c = index.graph.meta.counts;
   const filterOn = filters.roles.size > 0 || filters.comms.size > 0 || filters.deadOnly;
 
+  if (!open) {
+    return (
+      <button
+        data-ui
+        type="button"
+        onClick={onToggleOpen}
+        title="Show panel ([)"
+        aria-label="Show control panel"
+        style={{
+          position: "absolute",
+          top: PANEL_INSET,
+          left: PANEL_INSET,
+          zIndex: 2,
+          background: theme.panel,
+          border: `1px solid ${theme.border}`,
+          borderRadius: theme.radius,
+          color: theme.textMuted,
+          fontFamily: theme.fontMono,
+          fontSize: 11,
+          padding: "6px 10px",
+          cursor: "pointer",
+        }}
+      >
+        ▸ panel
+      </button>
+    );
+  }
+
   return (
     <aside
       data-ui
       style={{
         position: "absolute",
-        top: 12,
-        left: 12,
-        width: 280,
-        maxHeight: "calc(100% - 24px)",
+        top: PANEL_INSET,
+        left: PANEL_INSET,
+        width: PANEL_WIDTH,
+        maxHeight: `calc(100% - ${PANEL_INSET * 2}px)`,
         overflow: "auto",
         background: theme.panel,
         border: `1px solid ${theme.border}`,
@@ -63,18 +96,46 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
         zIndex: 2,
       }}
     >
-      <div style={{ padding: "12px 14px 8px", borderBottom: `1px solid ${theme.border}` }}>
-        <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>chorograph</div>
-        <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
-          {c.regions}r · {c.modules}m · {c.symbols}s · {c.externals}x · {c.edges}e
+      <div
+        style={{
+          padding: "10px 12px 8px",
+          borderBottom: `1px solid ${theme.border}`,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 8,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>chorograph</div>
+          <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+            {c.regions}r · {c.modules}m · {c.symbols}s · {c.externals}x · {c.edges}e
+          </div>
+          <div style={{ fontFamily: theme.fontMono, fontSize: 10, color: theme.textFaint, marginTop: 2 }}>
+            {visibleCount} visible
+            {search ? ` · ${matchCount} match` : ""}
+          </div>
         </div>
-        <div style={{ fontFamily: theme.fontMono, fontSize: 10, color: theme.textFaint, marginTop: 2 }}>
-          {visibleCount} visible
-          {search ? ` · ${matchCount} match` : ""}
-        </div>
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          title="Hide panel ([)"
+          aria-label="Hide control panel"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: theme.textFaint,
+            cursor: "pointer",
+            fontFamily: theme.fontMono,
+            fontSize: 11,
+            padding: "2px 4px",
+            lineHeight: 1,
+          }}
+        >
+          ◂
+        </button>
       </div>
 
-      <div style={{ padding: "10px 14px", borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ padding: "8px 12px", borderBottom: `1px solid ${theme.border}` }}>
         <label style={{ fontSize: 10, color: theme.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Search
         </label>
@@ -94,27 +155,22 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
             color: theme.text,
             fontFamily: theme.fontMono,
             fontSize: 12,
-            padding: "6px 8px",
+            padding: "5px 7px",
             outline: "none",
           }}
         />
       </div>
 
       <Section title="Roles">
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {roles.map(([role, count]) => {
             const on = filters.roles.has(role);
             return (
-              <button
-                key={role}
-                type="button"
-                onClick={() => onToggleRole(role)}
-                style={rowBtn(on)}
-              >
+              <button key={role} type="button" onClick={() => onToggleRole(role)} style={rowBtn(on)}>
                 <span
                   style={{
-                    width: 8,
-                    height: 8,
+                    width: 7,
+                    height: 7,
                     borderRadius: 1,
                     background: roleColor(role),
                     flexShrink: 0,
@@ -129,7 +185,7 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
       </Section>
 
       <Section title="Comms">
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {index.allComms.map((comms) => {
             const on = filters.comms.has(comms);
             return (
@@ -154,7 +210,7 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
       </Section>
 
       {filterOn && (
-        <div style={{ padding: "8px 14px 12px" }}>
+        <div style={{ padding: "8px 12px 10px" }}>
           <button
             type="button"
             onClick={onClearFilters}
@@ -172,7 +228,7 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
 
       <div
         style={{
-          padding: "8px 14px 12px",
+          padding: "8px 12px 10px",
           borderTop: `1px solid ${theme.border}`,
           fontFamily: theme.fontMono,
           fontSize: 10,
@@ -180,7 +236,7 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
           lineHeight: 1.5,
         }}
       >
-        / search · ↑↓←→ walk · enter open · f fit · esc clear
+        / search · [ panel · ↑↓←→ walk · enter open · f fit · esc clear
       </div>
     </aside>
   );
@@ -188,14 +244,14 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${theme.border}` }}>
+    <div style={{ padding: "8px 12px", borderBottom: `1px solid ${theme.border}` }}>
       <div
         style={{
           fontSize: 10,
           color: theme.textFaint,
           textTransform: "uppercase",
           letterSpacing: "0.06em",
-          marginBottom: 8,
+          marginBottom: 6,
         }}
       >
         {title}
@@ -211,7 +267,7 @@ function rowBtn(on: boolean): React.CSSProperties {
     alignItems: "center",
     gap: 8,
     width: "100%",
-    padding: "5px 8px",
+    padding: "4px 6px",
     background: on ? theme.panelRaised : "transparent",
     border: on ? `1px solid ${theme.borderStrong}` : "1px solid transparent",
     borderRadius: theme.radius,

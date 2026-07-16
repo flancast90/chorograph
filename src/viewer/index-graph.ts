@@ -4,7 +4,7 @@
  * @chorograph group="Viewer" role=usecase comms=in-proc
  */
 import type { Edge, Filters, Graph, Node } from "./types.ts";
-import { SHALLOW_EXPAND_MAX } from "./theme.ts";
+import { MIN_SEED_VISIBLE, SEED_PREVIEW_CHILDREN, SHALLOW_EXPAND_MAX } from "./theme.ts";
 
 export interface GraphIndex {
   readonly graph: Graph;
@@ -162,11 +162,27 @@ export function buildIndex(graph: Graph): GraphIndex {
   };
 }
 
+function childDegree(index: GraphIndex, id: string): number {
+  return (index.inbound.get(id)?.length ?? 0) + (index.outbound.get(id)?.length ?? 0);
+}
+
+/** Prefer heavy / well-connected children when preview-capping a huge region. */
+export function rankChildren(index: GraphIndex, kids: readonly Node[]): Node[] {
+  return kids.slice().sort((a, b) => {
+    const dw = (b.weight ?? 0) - (a.weight ?? 0);
+    if (dw) return dw;
+    const dd = childDegree(index, b.id) - childDegree(index, a.id);
+    if (dd) return dd;
+    return a.label.localeCompare(b.label);
+  });
+}
+
 /** Nodes currently drawn: roots always; children of expanded containers. */
 export function visibleFrontier(
   index: GraphIndex,
   expanded: ReadonlySet<string>,
   filters?: Filters,
+  childCaps?: ReadonlyMap<string, number>,
 ): Set<string> {
   const filterActive =
     !!filters && (filters.roles.size > 0 || filters.comms.size > 0 || filters.deadOnly);
@@ -176,12 +192,16 @@ export function visibleFrontier(
   while (queue.length) {
     const id = queue.pop()!;
     if (!expanded.has(id)) continue;
-    const kids = index.children.get(id) ?? [];
-    const shown =
-      filterActive && kids.length > SHALLOW_EXPAND_MAX
-        ? kids.filter((k) => index.subtreeMatches(k.id, filters!))
-        : kids;
-    for (const c of shown) {
+    let kids = index.children.get(id) ?? [];
+    if (filterActive && kids.length > SHALLOW_EXPAND_MAX) {
+      kids = kids.filter((k) => index.subtreeMatches(k.id, filters!));
+    } else {
+      const cap = childCaps?.get(id);
+      if (cap !== undefined && kids.length > cap) {
+        kids = rankChildren(index, kids).slice(0, cap);
+      }
+    }
+    for (const c of kids) {
       vis.add(c.id);
       queue.push(c.id);
     }
@@ -196,6 +216,37 @@ export function defaultExpanded(index: GraphIndex, maxChildren: number): Set<str
     if (kids.length > 0 && kids.length <= maxChildren) exp.add(r.id);
   }
   return exp;
+}
+
+/**
+ * Ensure the initial map isn't empty when one huge region dominates.
+ * Expands the largest collapsed roots; huge ones get a top-N child preview cap.
+ */
+export function seedExpanded(
+  index: GraphIndex,
+  maxChildren = SHALLOW_EXPAND_MAX,
+  minVisible = MIN_SEED_VISIBLE,
+  previewN = SEED_PREVIEW_CHILDREN,
+): { expanded: Set<string>; childCaps: Map<string, number> } {
+  const expanded = defaultExpanded(index, maxChildren);
+  const childCaps = new Map<string, number>();
+
+  const countVisible = () => visibleFrontier(index, expanded, undefined, childCaps).size;
+
+  let visible = countVisible();
+  const candidates = index.roots
+    .filter((r) => !expanded.has(r.id) && (index.children.get(r.id)?.length ?? 0) > 0)
+    .sort((a, b) => (index.children.get(b.id)?.length ?? 0) - (index.children.get(a.id)?.length ?? 0));
+
+  for (const r of candidates) {
+    if (visible >= minVisible) break;
+    const kids = index.children.get(r.id) ?? [];
+    expanded.add(r.id);
+    if (kids.length > maxChildren) childCaps.set(r.id, previewN);
+    visible = countVisible();
+  }
+
+  return { expanded, childCaps };
 }
 
 export function searchNodes(index: GraphIndex, q: string): Node[] {

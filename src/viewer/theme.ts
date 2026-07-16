@@ -105,3 +105,12 @@ export const NODE_H = {
 
 /** Auto-expand top-level containers only when their direct child count is at or below this. */
 export const SHALLOW_EXPAND_MAX = 48;
+
+/** Control panel chrome — fit-view subtracts this when the panel is open. */
+export const PANEL_WIDTH = 260;
+export const PANEL_INSET = 12; // left/top margin around floating panel
+export const DETAIL_WIDTH = 300;
+/** If the initial frontier is thinner than this, seed-expand large regions (top-N children). */
+export const MIN_SEED_VISIBLE = 12;
+/** Cap on children shown when seeding a huge collapsed region. */
+export const SEED_PREVIEW_CHILDREN = 28;

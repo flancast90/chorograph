@@ -11,6 +11,16 @@ export interface Camera {
   scale: number;
 }
 
+/** Pixels reserved by floating chrome (control panel, detail panel). */
+export interface ViewInsets {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export const ZERO_INSETS: ViewInsets = { left: 0, right: 0, top: 0, bottom: 0 };
+
 export function useCamera(initial?: Partial<Camera>) {
   const [camera, setCamera] = useState<Camera>({ x: 40, y: 40, scale: 1, ...initial });
   const dragging = useRef<{ px: number; py: number; cx: number; cy: number } | null>(null);
@@ -63,29 +73,44 @@ export function useCamera(initial?: Partial<Camera>) {
     dragging.current = null;
   }, []);
 
-  const fit = useCallback((bounds: { width: number; height: number }, view: { width: number; height: number }) => {
-    if (bounds.width <= 0 || bounds.height <= 0) return;
-    const pad = 64;
-    const sx = (view.width - pad * 2) / bounds.width;
-    const sy = (view.height - pad * 2) / bounds.height;
-    const scale = Math.min(1.2, Math.max(0.2, Math.min(sx, sy)));
-    setCamera({
-      scale,
-      x: (view.width - bounds.width * scale) / 2,
-      y: (view.height - bounds.height * scale) / 2,
-    });
-  }, []);
+  const fit = useCallback(
+    (bounds: { width: number; height: number }, view: { width: number; height: number }, insets: ViewInsets = ZERO_INSETS) => {
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      const pad = 48;
+      const availW = Math.max(120, view.width - insets.left - insets.right - pad * 2);
+      const availH = Math.max(120, view.height - insets.top - insets.bottom - pad * 2);
+      const scale = Math.min(1.2, Math.max(0.05, Math.min(availW / bounds.width, availH / bounds.height)));
+      const frameLeft = insets.left;
+      const frameTop = insets.top;
+      const frameW = view.width - insets.left - insets.right;
+      const frameH = view.height - insets.top - insets.bottom;
+      setCamera({
+        scale,
+        x: frameLeft + (frameW - bounds.width * scale) / 2,
+        y: frameTop + (frameH - bounds.height * scale) / 2,
+      });
+    },
+    [],
+  );
 
   const focusBox = useCallback(
-    (box: { x: number; y: number; width: number; height: number }, view: { width: number; height: number }) => {
-      const pad = 80;
-      const sx = (view.width - pad * 2) / Math.max(box.width, 1);
-      const sy = (view.height - pad * 2) / Math.max(box.height, 1);
+    (
+      box: { x: number; y: number; width: number; height: number },
+      view: { width: number; height: number },
+      insets: ViewInsets = ZERO_INSETS,
+    ) => {
+      const pad = 64;
+      const frameLeft = insets.left;
+      const frameTop = insets.top;
+      const frameW = Math.max(120, view.width - insets.left - insets.right);
+      const frameH = Math.max(120, view.height - insets.top - insets.bottom);
+      const sx = (frameW - pad * 2) / Math.max(box.width, 1);
+      const sy = (frameH - pad * 2) / Math.max(box.height, 1);
       const scale = Math.min(1.5, Math.max(0.35, Math.min(sx, sy)));
       setCamera({
         scale,
-        x: view.width / 2 - (box.x + box.width / 2) * scale,
-        y: view.height / 2 - (box.y + box.height / 2) * scale,
+        x: frameLeft + frameW / 2 - (box.x + box.width / 2) * scale,
+        y: frameTop + frameH / 2 - (box.y + box.height / 2) * scale,
       });
     },
     [],
@@ -100,6 +125,7 @@ export function useKeyboard(handlers: {
   onEscape: () => void;
   onArrow: (dir: "up" | "down" | "left" | "right") => void;
   onEnter: () => void;
+  onTogglePanel?: () => void;
 }) {
   const ref = useRef(handlers);
   ref.current = handlers;
@@ -120,6 +146,9 @@ export function useKeyboard(handlers: {
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         ref.current.onFit();
+      } else if (e.key === "[") {
+        e.preventDefault();
+        ref.current.onTogglePanel?.();
       } else if (e.key === "Escape") {
         ref.current.onEscape();
       } else if (e.key === "ArrowUp") {
