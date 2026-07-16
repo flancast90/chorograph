@@ -99,6 +99,9 @@ export function buildIndex(graph: Graph): GraphIndex {
   }
 
   function nodeMatches(node: Node, filters: Filters): boolean {
+    if (filters.changedOnly === true) {
+      // Handled by blast-radius pruning in visibleFrontier; don't double-hide here.
+    }
     if (filters.deadOnly) {
       const dead = orphan.has(node.id) || unreachable.has(node.id) || deprecated.has(node.id) || node.status === "deprecated";
       if (!dead) return false;
@@ -109,7 +112,6 @@ export function buildIndex(graph: Graph): GraphIndex {
     if (filters.comms.size > 0) {
       const nodeHit = node.comms.some((c) => filters.comms.has(c));
       if (!nodeHit) {
-        // Also match if any incident edge uses the comms.
         const edges = [...(inbound.get(node.id) ?? []), ...(outbound.get(node.id) ?? [])];
         if (!edges.some((e) => filters.comms.has(e.comms))) return false;
       }
@@ -166,6 +168,43 @@ function childDegree(index: GraphIndex, id: string): number {
   return (index.inbound.get(id)?.length ?? 0) + (index.outbound.get(id)?.length ?? 0);
 }
 
+/** Changed nodes + one-hop neighbors — the review blast radius. */
+export function blastRadius(index: GraphIndex): Set<string> {
+  const focus = new Set<string>();
+  for (const n of index.graph.nodes) {
+    if (n.diff) focus.add(n.id);
+  }
+  for (const e of index.graph.edges) {
+    if (e.diff) {
+      focus.add(e.from);
+      focus.add(e.to);
+    }
+  }
+  const radius = new Set(focus);
+  for (const id of focus) {
+    for (const e of index.inbound.get(id) ?? []) radius.add(e.from);
+    for (const e of index.outbound.get(id) ?? []) radius.add(e.to);
+  }
+  return radius;
+}
+
+function intersectsBlast(index: GraphIndex, id: string, blast: ReadonlySet<string>, cache: Map<string, boolean>): boolean {
+  const hit = cache.get(id);
+  if (hit !== undefined) return hit;
+  if (blast.has(id)) {
+    cache.set(id, true);
+    return true;
+  }
+  for (const c of index.children.get(id) ?? []) {
+    if (intersectsBlast(index, c.id, blast, cache)) {
+      cache.set(id, true);
+      return true;
+    }
+  }
+  cache.set(id, false);
+  return false;
+}
+
 /** Prefer heavy / well-connected children when preview-capping a huge region. */
 export function rankChildren(index: GraphIndex, kids: readonly Node[]): Node[] {
   return kids.slice().sort((a, b) => {
@@ -183,9 +222,12 @@ export function visibleFrontier(
   expanded: ReadonlySet<string>,
   filters?: Filters,
   childCaps?: ReadonlyMap<string, number>,
+  blast?: ReadonlySet<string>,
 ): Set<string> {
   const filterActive =
     !!filters && (filters.roles.size > 0 || filters.comms.size > 0 || filters.deadOnly);
+  const changedOnly = filters?.changedOnly === true && blast && blast.size > 0;
+  const blastCache = new Map<string, boolean>();
   const vis = new Set<string>();
   for (const r of index.roots) vis.add(r.id);
   const queue = [...index.roots.map((r) => r.id)];
@@ -193,7 +235,9 @@ export function visibleFrontier(
     const id = queue.pop()!;
     if (!expanded.has(id)) continue;
     let kids = index.children.get(id) ?? [];
-    if (filterActive && kids.length > SHALLOW_EXPAND_MAX) {
+    if (changedOnly) {
+      kids = kids.filter((k) => intersectsBlast(index, k.id, blast!, blastCache));
+    } else if (filterActive && kids.length > SHALLOW_EXPAND_MAX) {
       kids = kids.filter((k) => index.subtreeMatches(k.id, filters!));
     } else {
       const cap = childCaps?.get(id);

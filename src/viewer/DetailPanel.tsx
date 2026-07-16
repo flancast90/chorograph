@@ -61,6 +61,7 @@ export function DetailPanel({ index, selected, onNavigate, onClose }: Props) {
           <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word" }}>{node.label}</div>
           <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
             {node.containment}
+            {node.diff ? ` · ${node.diff}` : ""}
             {dead ? ` · ${dead}` : ""}
           </div>
         </div>

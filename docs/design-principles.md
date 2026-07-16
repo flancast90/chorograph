@@ -33,7 +33,9 @@ size carry hierarchy, not color.
 border color, two text tiers. Node/role colors come from a **small, fixed, perceptually-even palette**
 (≤10 hues, e.g. an OKLCH ramp) mapped deterministically to roles, with a stable legend. Deprecated =
 one warning hue; orphan/unreachable = one muted "dead" treatment (desaturated + dashed), never a new
-rainbow. Same input → same colors every run.
+rainbow. Diff review reuses the same calm set: **added** = muted green, **removed** = muted red
+(ghosted/dashed), **touched** = ochre/amber outline — unchanged nodes recede further. Same input →
+same colors every run.
 
 **Lines carry direction and meaning.** Every edge is directed (arrowhead). Default state: thin,
 low-contrast, so the graph is legible as a whole. On hover/select of a node, its edges light up and
@@ -57,7 +59,8 @@ Everything reachable without a mouse.
 faster renderer:
 
 - **Collapse-first + level-of-detail.** Never render 10k nodes. Render the expanded frontier
-  (hundreds), roll everything else up into its container.
+  (hundreds), roll everything else up into its container. In **diff mode**, default to changed
+  nodes + one-hop neighbors (blast radius) so a 5k-line PR stays legible.
 - **Precomputed layout** (in the CLI, via ELK) so the browser never blocks laying out.
 - **Viewport culling.** Only draw what's on screen; virtualize the tree/panels.
 - **Rolled-up edges.** When a container is collapsed, its cross-boundary edges aggregate into one

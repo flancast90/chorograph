@@ -7,7 +7,15 @@
 export * from "./core/model.ts";
 export { parseAnnotation, type ParsedAnnotation, ANNOTATION_TAGS } from "./core/annotations.ts";
 export { assemble, type AssembleOptions } from "./core/graph.ts";
+export { diffGraphs, type DiffOptions } from "./core/diff.ts";
 export { createTypeScriptProvider } from "./providers/typescript.ts";
+export {
+  scanRef,
+  gitRoot,
+  defaultBranch,
+  mergeBaseWithDefault,
+  WORKTREE,
+} from "./git.ts";
 
 import { assemble } from "./core/graph.ts";
 import type { Graph, Provider } from "./core/model.ts";

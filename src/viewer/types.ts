@@ -9,6 +9,8 @@ export type Containment = "region" | "module" | "symbol" | "external";
 export type Status = "active" | "deprecated" | "experimental";
 export type Comms = string;
 export type Role = string;
+export type NodeDiff = "added" | "removed" | "touched";
+export type EdgeDiff = "added" | "removed";
 
 export interface Node {
   readonly id: string;
@@ -27,6 +29,7 @@ export interface Node {
   readonly group?: string;
   readonly root?: boolean;
   readonly weight?: number;
+  readonly diff?: NodeDiff;
 }
 
 export interface Edge {
@@ -37,12 +40,23 @@ export interface Edge {
   readonly comms: Comms;
   readonly weight: number;
   readonly label?: string;
+  readonly diff?: EdgeDiff;
 }
 
 export interface Dead {
   readonly orphans: readonly string[];
   readonly unreachable: readonly string[];
   readonly deprecated: readonly string[];
+}
+
+export interface DiffMeta {
+  readonly base: string;
+  readonly head: string;
+  readonly nodesAdded: number;
+  readonly nodesRemoved: number;
+  readonly nodesTouched: number;
+  readonly edgesAdded: number;
+  readonly edgesRemoved: number;
 }
 
 export interface GraphMeta {
@@ -59,6 +73,7 @@ export interface GraphMeta {
     readonly edges: number;
   };
   readonly roles: Record<string, number>;
+  readonly diff?: DiffMeta;
 }
 
 export interface Graph {
@@ -82,6 +97,7 @@ export interface RolledEdge {
   readonly comms: Comms;
   readonly weight: number;
   readonly underlying: readonly string[];
+  readonly diff?: EdgeDiff;
 }
 
 export interface LayoutBox {
@@ -120,4 +136,9 @@ export interface Filters {
   readonly comms: ReadonlySet<string>;
   /** When true, emphasise dead nodes and hide everything else that isn't dead. */
   readonly deadOnly: boolean;
+  /**
+   * Diff mode: show only added/removed/touched + one-hop neighbors.
+   * `null` = not a diff graph; `true` = changed-only (default); `false` = show all.
+   */
+  readonly changedOnly: boolean | null;
 }

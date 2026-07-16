@@ -9,6 +9,7 @@ import { ControlPanel } from "./ControlPanel.tsx";
 import { DetailPanel } from "./DetailPanel.tsx";
 import { useCamera, useKeyboard, type ViewInsets } from "./hooks.ts";
 import {
+  blastRadius,
   buildIndex,
   expandToReveal,
   searchNodes,
@@ -20,17 +21,43 @@ import { rollupEdges } from "./rollup.ts";
 import { DETAIL_WIDTH, PANEL_INSET, PANEL_WIDTH, SHALLOW_EXPAND_MAX, theme } from "./theme.ts";
 import type { Filters, Graph, RolledEdge } from "./types.ts";
 
-const emptyFilters: Filters = { roles: new Set(), comms: new Set(), deadOnly: false };
+function baseFilters(diffMode: boolean): Filters {
+  return {
+    roles: new Set(),
+    comms: new Set(),
+    deadOnly: false,
+    changedOnly: diffMode ? true : null,
+  };
+}
+
+/** Expand every ancestor of blast nodes — caps lifted; changed-only prunes the frontier. */
+function expandBlast(index: ReturnType<typeof buildIndex>, blast: ReadonlySet<string>, prev: Set<string>): Set<string> {
+  const next = new Set(prev);
+  for (const id of blast) {
+    for (const a of index.ancestors(id)) next.add(a);
+    const parent = index.byId.get(id)?.parent;
+    if (parent) next.add(parent);
+  }
+  return next;
+}
 
 export function App({ graph }: { graph: Graph }) {
+  const diffMode = !!graph.meta.diff;
   const index = useMemo(() => buildIndex(graph), [graph]);
-  const seeded = useMemo(() => seedExpanded(index), [index]);
+  const blast = useMemo(() => (diffMode ? blastRadius(index) : null), [diffMode, index]);
+  const seeded = useMemo(() => {
+    if (diffMode && blast && blast.size > 0) {
+      const expanded = expandBlast(index, blast, new Set());
+      return { expanded, childCaps: new Map<string, number>() };
+    }
+    return seedExpanded(index);
+  }, [index, diffMode, blast]);
   const [expanded, setExpanded] = useState(() => seeded.expanded);
   const [childCaps, setChildCaps] = useState(() => seeded.childCaps);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(emptyFilters);
+  const [filters, setFilters] = useState<Filters>(() => baseFilters(diffMode));
   const [search, setSearch] = useState("");
   const [scene, setScene] = useState<Scene | null>(null);
   const [rolled, setRolled] = useState<RolledEdge[]>([]);
@@ -53,8 +80,8 @@ export function App({ graph }: { graph: Graph }) {
   );
 
   const visible = useMemo(
-    () => visibleFrontier(index, expanded, filters, childCaps),
-    [index, expanded, filters, childCaps],
+    () => visibleFrontier(index, expanded, filters, childCaps, blast ?? undefined),
+    [index, expanded, filters, childCaps, blast],
   );
 
   const matches = useMemo(() => {
@@ -73,7 +100,7 @@ export function App({ graph }: { graph: Graph }) {
   useEffect(() => {
     const gen = ++layoutGen.current;
     setLayouting(true);
-    const vis = visibleFrontier(index, expanded, filters, childCaps);
+    const vis = visibleFrontier(index, expanded, filters, childCaps, blast ?? undefined);
     const rolledNow = rollupEdges(index, vis);
     void buildScene(index, expanded, vis, rolledNow).then((s) => {
       if (gen !== layoutGen.current) return;
@@ -81,7 +108,7 @@ export function App({ graph }: { graph: Graph }) {
       setScene(s);
       setLayouting(false);
     });
-  }, [index, expanded, filters, childCaps]);
+  }, [index, expanded, filters, childCaps, blast]);
 
   // Measure viewport.
   useEffect(() => {
@@ -190,7 +217,7 @@ export function App({ graph }: { graph: Graph }) {
         return;
       }
       setSelected(null);
-      setFilters(emptyFilters);
+      setFilters(baseFilters(diffMode));
     },
     onArrow: (dir) => {
       if (walkables.length === 0) return;
@@ -301,7 +328,18 @@ export function App({ graph }: { graph: Graph }) {
         onToggleRole={toggleRole}
         onToggleComms={toggleComms}
         onToggleDead={() => setFilters((f) => ({ ...f, deadOnly: !f.deadOnly }))}
-        onClearFilters={() => setFilters(emptyFilters)}
+        onToggleChangedOnly={() =>
+          setFilters((f) => {
+            if (f.changedOnly === null) return f;
+            const next = !f.changedOnly;
+            if (next && blast) {
+              setExpanded((prev) => expandBlast(index, blast, prev));
+              setChildCaps(new Map());
+            }
+            return { ...f, changedOnly: next };
+          })
+        }
+        onClearFilters={() => setFilters(baseFilters(diffMode))}
       />
 
       <DetailPanel index={index} selected={selected} onNavigate={navigateTo} onClose={() => setSelected(null)} />

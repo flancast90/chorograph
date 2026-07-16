@@ -21,6 +21,7 @@ interface Props {
   onToggleRole: (role: string) => void;
   onToggleComms: (comms: string) => void;
   onToggleDead: () => void;
+  onToggleChangedOnly: () => void;
   onClearFilters: () => void;
 }
 
@@ -37,6 +38,7 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
     onToggleRole,
     onToggleComms,
     onToggleDead,
+    onToggleChangedOnly,
     onClearFilters,
   },
   ref,
@@ -46,7 +48,12 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
     [index],
   );
   const c = index.graph.meta.counts;
-  const filterOn = filters.roles.size > 0 || filters.comms.size > 0 || filters.deadOnly;
+  const diff = index.graph.meta.diff;
+  const filterOn =
+    filters.roles.size > 0 ||
+    filters.comms.size > 0 ||
+    filters.deadOnly ||
+    (filters.changedOnly === false);
 
   if (!open) {
     return (
@@ -107,9 +114,39 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
       >
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.02em" }}>chorograph</div>
-          <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
-            {c.regions}r · {c.modules}m · {c.symbols}s · {c.externals}x · {c.edges}e
-          </div>
+          {diff ? (
+            <>
+              <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+                <span style={{ color: theme.diffAdded }}>+{diff.nodesAdded}</span>
+                {" · "}
+                <span style={{ color: theme.diffRemoved }}>−{diff.nodesRemoved}</span>
+                {" · "}
+                <span style={{ color: theme.diffTouched }}>~{diff.nodesTouched}</span>
+                {" · "}
+                <span style={{ color: theme.diffAdded }}>+{diff.edgesAdded}e</span>
+                {" · "}
+                <span style={{ color: theme.diffRemoved }}>−{diff.edgesRemoved}e</span>
+              </div>
+              <div
+                style={{
+                  fontFamily: theme.fontMono,
+                  fontSize: 10,
+                  color: theme.textFaint,
+                  marginTop: 2,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={`${diff.base}…${diff.head}`}
+              >
+                {diff.base}…{diff.head}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+              {c.regions}r · {c.modules}m · {c.symbols}s · {c.externals}x · {c.edges}e
+            </div>
+          )}
           <div style={{ fontFamily: theme.fontMono, fontSize: 10, color: theme.textFaint, marginTop: 2 }}>
             {visibleCount} visible
             {search ? ` · ${matchCount} match` : ""}
@@ -160,6 +197,25 @@ export const ControlPanel = forwardRef<HTMLInputElement, Props>(function Control
           }}
         />
       </div>
+
+      {diff && (
+        <Section title="Diff">
+          <button type="button" onClick={onToggleChangedOnly} style={rowBtn(filters.changedOnly === true)}>
+            <span style={{ flex: 1, textAlign: "left" }}>
+              {filters.changedOnly ? "changed only" : "show all"}
+            </span>
+            <span style={{ fontFamily: theme.fontMono, color: theme.textFaint }}>
+              {filters.changedOnly ? "blast" : "full"}
+            </span>
+          </button>
+          <div style={{ fontSize: 11, color: theme.textFaint, marginTop: 6, lineHeight: 1.4 }}>
+            <span style={{ color: theme.diffAdded }}>green</span> added ·{" "}
+            <span style={{ color: theme.diffRemoved }}>red</span> removed ·{" "}
+            <span style={{ color: theme.diffTouched }}>amber</span> touched
+            {filters.changedOnly ? " · +1-hop neighbors" : ""}
+          </div>
+        </Section>
+      )}
 
       <Section title="Roles">
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>

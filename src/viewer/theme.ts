@@ -19,6 +19,10 @@ export const theme = {
   dead: "#6a6e76",
   selection: "#9eb6d4",
   match: "#c4a35a",
+  /** Diff overlay — keep within the calm semantic set (no rainbow). */
+  diffAdded: "#6a9a7a",
+  diffRemoved: "#a07070",
+  diffTouched: "#c4a35a",
   nodeFill: "#14181e",
   nodeFillHover: "#1a1f27",
   regionFill: "#0e1116",

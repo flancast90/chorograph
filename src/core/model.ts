@@ -67,6 +67,11 @@ export type Comms =
 
 export type Status = "active" | "deprecated" | "experimental";
 
+/** How a node changed between two revisions of a map. Absent = unchanged. */
+export type NodeDiff = "added" | "removed" | "touched";
+/** How an edge changed between two revisions. Absent = unchanged. */
+export type EdgeDiff = "added" | "removed";
+
 /** A single thing in the map: a region, a module (file), a symbol, or an external system. */
 export interface Node {
   /** Stable id. Regions: `region:<path>`. Modules: relative file path. Symbols: `<file>#<name>`. */
@@ -91,6 +96,8 @@ export interface Node {
   readonly root?: boolean;
   /** Cheap size metric for level-of-detail sizing: lines of code, or descendant count for regions. */
   readonly weight?: number;
+  /** Present on graphs produced by {@link diffGraphs}. */
+  readonly diff?: NodeDiff;
 }
 
 /** A directed connection. Every edge points `from → to`; there are no undirected edges. */
@@ -104,6 +111,8 @@ export interface Edge {
   /** Fan-in count for rolled-up edges (how many underlying edges this represents). */
   readonly weight: number;
   readonly label?: string;
+  /** Present on graphs produced by {@link diffGraphs}. */
+  readonly diff?: EdgeDiff;
 }
 
 /** Deadness verdicts, split by axis so the viewer can style each differently. */
@@ -114,6 +123,17 @@ export interface Dead {
   readonly unreachable: readonly string[];
   /** `status=deprecated` nodes. */
   readonly deprecated: readonly string[];
+}
+
+/** Summary of a `chorograph diff` run — present when the graph carries a revision overlay. */
+export interface DiffMeta {
+  readonly base: string;
+  readonly head: string;
+  readonly nodesAdded: number;
+  readonly nodesRemoved: number;
+  readonly nodesTouched: number;
+  readonly edgesAdded: number;
+  readonly edgesRemoved: number;
 }
 
 export interface GraphMeta {
@@ -131,6 +151,8 @@ export interface GraphMeta {
   };
   /** Distinct role → count, so the viewer can build filters without a full scan. */
   readonly roles: Record<string, number>;
+  /** Present when this graph is a merged base→head revision overlay. */
+  readonly diff?: DiffMeta;
 }
 
 /** The complete, serialisable map. This is the on-disk `graph.json` contract. */
