@@ -1,0 +1,56 @@
+{
+  "name": "chorograph",
+  "version": "0.1.0",
+  "description": "A chorography of your codebase — map every region, module, and function, and how they actually connect.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "dependency-graph",
+    "visualization",
+    "codebase-map",
+    "static-analysis",
+    "typescript"
+  ],
+  "bin": {
+    "chorograph": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "scripts": {
+    "chorograph": "tsx src/cli.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "elkjs": "^0.9.3",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "esbuild": "^0.24.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

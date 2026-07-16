@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.chorograph/
+*.log
+.DS_Store
