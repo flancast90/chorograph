@@ -1,27 +1,26 @@
 /**
  * The `@chorograph` annotation grammar — optional metadata authors hand-write to *refine* the map.
  *
- * chorograph works with zero annotations: structure comes from the filesystem and edges from imports.
- * An annotation upgrades a node with semantics the code can't reveal on its own — that a function is
- * an `agent-tool`, that a client `talksTo` Stripe over `http`, that something is `deprecated`.
+ * chorograph works with zero annotations: structure is derived from the directory tree and edges from
+ * imports. An annotation upgrades a node with semantics the code can't reveal on its own — that a
+ * function is an `agent-tool`, that a client `talksTo` Stripe over `http`, that something is
+ * `deprecated` — or overrides its `group` when the folder layout doesn't match the logical one.
  *
  *   @chorograph <role> group="Layer/Service" role=<role> roles=a;b comms=http;sql \
- *               talksTo=Stripe;"SAM.gov API" status=deprecated tags=x;y name=Foo root
+ *               talksTo=Stripe;"Payments API" status=deprecated tags=x;y name=Foo root
  *
  * · the first bare token (no `=`) is shorthand for `role`
- * · `group` is a slash-delimited containment path (`Domain/Ports`) — the ONLY structural key, and
- *   the only thing that places a node in the layer › service › function hierarchy. No folder names
- *   are ever read for structure. Omit it and the node lands under an `Ungrouped` region.
+ * · `group` is a slash-delimited containment path (`Domain/Ports`) that overrides the directory-
+ *   derived placement in the layer › service › function hierarchy.
  * · the bare token `root` marks a legitimate entrypoint (never flagged as dead)
  * · list values (`roles`, `comms`, `talksTo`, `tags`) split on `;` or `,`
  * · values may be "double quoted" to include spaces
- * · `@archmap` is accepted as a legacy alias, and its `kind=` maps to `role`
  *
  * @chorograph role=domain-model group="Core" comms=in-proc
  */
 import type { Comms, Role, Status } from "./model.ts";
 
-export const ANNOTATION_TAGS = ["chorograph", "archmap"] as const;
+export const ANNOTATION_TAGS = ["chorograph"] as const;
 
 const STATUS_SET = new Set<Status>(["active", "deprecated", "experimental"]);
 
@@ -94,7 +93,6 @@ export function parseAnnotation(raw: string): ParsedAnnotation {
     const key = token.slice(0, eq).trim();
     const value = unquote(token.slice(eq + 1).trim());
     switch (key) {
-      case "kind": // legacy @archmap alias
       case "role":
         addRole(value);
         break;
@@ -118,9 +116,6 @@ export function parseAnnotation(raw: string): ParsedAnnotation {
         break;
       case "group":
         group = value.replace(/^\/+|\/+$/g, "").trim() || undefined;
-        break;
-      case "layer": // legacy @archmap key → outermost group segment when no explicit group is set.
-        if (group === undefined && value.trim()) group = value.trim();
         break;
       case "root":
         root = value !== "false";

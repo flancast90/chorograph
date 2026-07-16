@@ -14,7 +14,7 @@ import type { Graph, Provider } from "./core/model.ts";
 import { createTypeScriptProvider } from "./providers/typescript.ts";
 
 export interface ScanOptions {
-  /** Honour `@chorograph`/`@archmap` annotations (currently the only node source). Default true. */
+  /** Layer optional `@chorograph` annotations on top of the zero-config folder map. Default true. */
   readonly annotations?: boolean;
   readonly onWarn?: (msg: string) => void;
   readonly provider?: Provider;

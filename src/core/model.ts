@@ -7,19 +7,20 @@
  * {@link Provider} for any language produces this same shape, and everything downstream (layout,
  * rollup, rendering) speaks only this vocabulary.
  *
- * chorograph makes **no assumptions about repository layout**. It never reads meaning from folder
- * names. Structure (which layer/service a thing belongs to) is *declared* in a one-line annotation
- * via a `group` path; the only thing read from the code itself is `import` statements, which are
- * facts, not conventions. Drop it in any TypeScript project, tag mechanically, and it works.
+ * chorograph is **zero-config**: structure (which layer/service a thing belongs to) defaults to the
+ * project's own directory tree, and edges come from `import` statements — both facts, not conventions,
+ * so no assumptions are made about what any folder *means*. A one-line `@chorograph` annotation is
+ * optional: it adds semantics (`role`, `comms`, `talksTo`, `status`) or overrides `group` when the
+ * folder layout and the logical architecture diverge. Drop it in any TypeScript project and it works.
  *
  * @chorograph role=domain-model group="Core" comms=in-proc
  */
 
 /**
  * A node's structural level in the containment tree — the "general parts of software" axis.
- * `region` nests arbitrarily deep via a declared `group` path (e.g. `Domain/Ports`), so this stays a
- * small closed set while the tree carries the depth. Regions and their nesting are declared in
- * annotations, never inferred from directory names.
+ * `region` nests arbitrarily deep via a `group` path (e.g. `Domain/Ports`), so this stays a small
+ * closed set while the tree carries the depth. Groups come from the directory tree by default, or an
+ * explicit annotation override.
  */
 export type Containment = "region" | "module" | "symbol" | "external";
 

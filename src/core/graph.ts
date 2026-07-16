@@ -1,9 +1,10 @@
 /**
  * Graph assembly — the language-agnostic core that turns a {@link ProviderResult} into a {@link Graph}.
  *
- * It synthesises the region tree from declared `group` paths (never from folders), wires every node
- * to its containment parent, computes deadness on two axes (structural orphans and reachability from
- * declared entrypoints), and stamps metadata. Providers stay dumb; this is where the shape is made.
+ * It synthesises the region tree from each node's `group` path (derived from the directory tree by
+ * default, or an annotation override), wires every node to its containment parent, computes deadness
+ * on two axes (structural orphans and reachability from declared entrypoints), and stamps metadata.
+ * Providers stay dumb; this is where the shape is made.
  *
  * @chorograph group="Core" role=usecase comms=in-proc
  */

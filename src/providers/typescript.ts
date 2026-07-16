@@ -1,11 +1,15 @@
 /**
- * The TypeScript/JavaScript provider — turns annotated `.ts`/`.tsx` files into raw nodes + edges.
+ * The TypeScript/JavaScript provider — turns a directory of `.ts`/`.tsx` files into raw nodes + edges.
  *
- * Structure-agnostic by design: it recurses whatever directory it is pointed at, reads only what the
- * code actually states (`@chorograph` annotations and `import` statements), and never infers meaning
- * from folder names. Every file that carries an annotation becomes a `module` node; annotated
- * declarations inside it become `symbol` nodes; `import` edges are resolved with the TypeScript
- * compiler API (parse-only, no type-checking, so it stays fast on large trees).
+ * Zero-config by default: every source file becomes a `module` node, and its place in the tree is
+ * derived from its **directory path** relative to the scan root — so any repo maps instantly with no
+ * setup. Nothing is *assumed* about what the folders mean; the map simply mirrors the structure that
+ * is already there. `import` edges are resolved with the TypeScript compiler API (parse-only, no
+ * type-checking, so it stays fast on large trees).
+ *
+ * Annotations are optional enrichment layered on top (when `opts.annotations`): a `@chorograph` tag
+ * can override a module's `group`, add semantic `role`/`comms`/`talksTo`/`status`, mark entrypoints,
+ * or promote individual declarations to `symbol` nodes for finer detail.
  *
  * @chorograph group="Providers/TypeScript" role=adapter comms=in-proc talksTo=TypeScript
  */
@@ -44,6 +48,12 @@ const isSource = (f: string): boolean =>
 
 const norm = (p: string): string => p.split(sep).join("/");
 const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+/** The directory chain of a file, as a `/`-joined group path. Root-level files get no group. */
+function dirGroup(relFile: string): string | undefined {
+  const i = relFile.lastIndexOf("/");
+  return i === -1 ? undefined : relFile.slice(0, i);
+}
 
 /** Recursively collect every source file under `root`, skipping build/vendor dirs. No layout assumed. */
 function discoverFiles(root: string): string[] {
@@ -186,11 +196,11 @@ interface FileNodes {
 }
 
 /** Extract the module node + symbol nodes + talks-to declarations for one parsed file. */
-function nodesInFile(sf: ts.SourceFile, relFile: string): FileNodes {
+function nodesInFile(sf: ts.SourceFile, relFile: string, annotations: boolean): FileNodes {
   let moduleAnn: ReturnType<typeof parseAnnotation> | undefined;
   let moduleProse = "";
   const first = sf.statements[0];
-  if (first !== undefined && !isCapturable(first)) {
+  if (annotations && first !== undefined && !isCapturable(first)) {
     const tag = annotationTag(first);
     if (tag !== undefined) {
       moduleAnn = parseAnnotation(ts.getTextOfJSDocComment(tag.comment) ?? "");
@@ -204,8 +214,10 @@ function nodesInFile(sf: ts.SourceFile, relFile: string): FileNodes {
 
   const fileBase = (relFile.split("/").pop() ?? relFile).replace(/\.(m|c)?tsx?$/, "");
   const moduleId = relFile;
+  // Structure defaults to the directory tree; an annotation `group=` overrides it.
+  const moduleGroup = moduleAnn?.group ?? dirGroup(relFile);
 
-  sf.forEachChild((node) => {
+  if (annotations) sf.forEachChild((node) => {
     if (!isCapturable(node)) return;
     const tag = annotationTag(node);
     if (tag === undefined) return;
@@ -213,7 +225,7 @@ function nodesInFile(sf: ts.SourceFile, relFile: string): FileNodes {
     const name = ann.name ?? declName(node) ?? "(anonymous)";
     const id = `${relFile}#${name}`;
     const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
-    const group = ann.group ?? moduleAnn?.group;
+    const group = ann.group ?? moduleGroup;
     const prose = proseOf(tag);
     symbols.push({
       id,
@@ -249,7 +261,7 @@ function nodesInFile(sf: ts.SourceFile, relFile: string): FileNodes {
     file: relFile,
     root: moduleAnn?.root ?? false,
     weight: symbols.length,
-    ...(moduleAnn?.group !== undefined ? { group: moduleAnn.group } : {}),
+    ...(moduleGroup !== undefined ? { group: moduleGroup } : {}),
     ...(moduleProse ? { description: moduleProse } : {}),
   };
   if (moduleAnn !== undefined) {
@@ -283,11 +295,9 @@ export function createTypeScriptProvider(): Provider {
         } catch {
           continue;
         }
-        // Opt-in, mechanical: only files carrying an annotation contribute nodes.
-        if (!ANNOTATION_TAGS.some((t) => text.includes(`@${t}`))) continue;
         const relFile = norm(relative(root, abs));
         const sf = ts.createSourceFile(abs, text, ts.ScriptTarget.Latest, true);
-        const fn = nodesInFile(sf, relFile);
+        const fn = nodesInFile(sf, relFile, opts.annotations);
         byFile.set(relFile, fn);
         absToRel.set(norm(abs), relFile);
         relToAbs.set(relFile, abs);

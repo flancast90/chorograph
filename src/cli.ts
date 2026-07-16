@@ -5,7 +5,7 @@
  *   chorograph [scan] <dir>   scan a directory → .chorograph/graph.json + report.html (and open it)
  *   chorograph serve <dir>    scan, then serve the report on a local port with live re-scan
  *
- * Flags: --out <dir>  --json (graph only, no html)  --no-open  --port <n>  --quiet
+ * Flags: --out <dir>  --json (graph only, no html)  --no-open  --no-annotations  --port <n>  --quiet
  *
  * @chorograph group="CLI" role=cli comms=in-proc root
  */
@@ -36,6 +36,7 @@ interface Args {
   readonly open: boolean;
   readonly port: number;
   readonly quiet: boolean;
+  readonly annotations: boolean;
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -50,16 +51,18 @@ function parseArgs(argv: readonly string[]): Args {
   let open = true;
   let port = 4123;
   let quiet = false;
+  let annotations = true;
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === "--out") out = rest[++i] ?? out;
     else if (a === "--json") json = true;
     else if (a === "--no-open") open = false;
+    else if (a === "--no-annotations") annotations = false;
     else if (a === "--port") port = Number(rest[++i] ?? port) || port;
     else if (a === "--quiet") quiet = true;
     else if (a !== undefined && !a.startsWith("-")) dir = a;
   }
-  return { command, dir, out, json, open, port, quiet };
+  return { command, dir, out, json, open, port, quiet, annotations };
 }
 
 const abs = (p: string): string => (isAbsolute(p) ? p : resolve(process.cwd(), p));
@@ -75,7 +78,11 @@ async function main(): Promise<void> {
   log(`chorograph ${version()} · scanning ${root} …`);
   const warnings: string[] = [];
   const t0 = Date.now();
-  const graph = await scan(root, { version: version(), onWarn: (w) => warnings.push(w) });
+  const graph = await scan(root, {
+    version: version(),
+    annotations: args.annotations,
+    onWarn: (w) => warnings.push(w),
+  });
   const ms = Date.now() - t0;
 
   mkdirSync(outDir, { recursive: true });

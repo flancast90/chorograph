@@ -10,18 +10,20 @@ import type { Node, ProviderResult } from "./model.ts";
 
 describe("parseAnnotation", () => {
   it("reads a bare role, group path, list comms, and quoted talksTo", () => {
-    const a = parseAnnotation('agent-tool group="Gateway/Agent" comms=llm;http talksTo=Anthropic;"SAM.gov API" root');
+    const a = parseAnnotation('agent-tool group="Gateway/Agent" comms=llm;http talksTo=Anthropic;"Payments API" root');
     expect(a.roles).toEqual(["agent-tool"]);
     expect(a.group).toBe("Gateway/Agent");
     expect(a.comms).toEqual(["llm", "http"]);
-    expect(a.talksTo).toEqual(["Anthropic", "SAM.gov API"]);
+    expect(a.talksTo).toEqual(["Anthropic", "Payments API"]);
     expect(a.root).toBe(true);
   });
 
-  it("accepts the legacy @archmap kind= and layer= keys", () => {
+  it("keeps unknown keys as tags and does not special-case any legacy grammar", () => {
     const a = parseAnnotation("kind=db-repo layer=adapter status=deprecated");
-    expect(a.roles).toEqual(["db-repo"]);
-    expect(a.group).toBe("adapter"); // layer becomes the group when none given
+    expect(a.roles).toEqual([]); // `kind=` is not a role alias
+    expect(a.group).toBeUndefined(); // `layer=` does not set structure
+    expect(a.tags).toContain("kind:db-repo");
+    expect(a.tags).toContain("layer:adapter");
     expect(a.status).toBe("deprecated");
   });
 });
