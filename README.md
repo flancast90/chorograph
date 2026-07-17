@@ -36,18 +36,18 @@ npx chorograph render src
 Three kinds of comments and you have a map:
 
 ```ts
-// 1. Anchor — once, in any file. Free-standing comments are fine.
+// 1. Anchor: once, in any file. Free-standing comments are fine.
 /** @system Acme */
 /** @domain Commerce */
 /** @external Stripe in:Commerce */
 
-// 2. Infrastructure — where it's configured.
+// 2. Infrastructure: where it's configured.
 /** @database orders-db in:Commerce tech:"PostgreSQL 16" tables:orders,order_items */
 export const db = createPool(process.env.ORDERS_DB_URL);
 
 /** @event order.placed in:Commerce */
 
-// 3. Each service — top of its file. Endpoints, functions, and jobs below attach automatically.
+// 3. Each service: top of its file. Endpoints, functions, and jobs below attach automatically.
 /**
  * Owns the order lifecycle from cart to fulfilment.
  * @service orders in:Commerce tech:Node.js
