@@ -35,8 +35,8 @@ jobs:
       - name: Decide whether this version needs publishing
         id: version
         run: |
-          NAME=$(node -p "require('./package.json').name")
-          LOCAL=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./packages/chorograph/package.json').name")
+          LOCAL=$(node -p "require('./packages/chorograph/package.json').version")
           PUBLISHED=$(npm view "$NAME" version 2>/dev/null || echo "none")
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
@@ -52,7 +52,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - if: steps.version.outputs.publish == 'true'
-        run: pnpm typecheck && pnpm test
+        run: pnpm codegen:check && pnpm typecheck && pnpm test
 
       - if: steps.version.outputs.publish == 'true'
         run: pnpm build
@@ -61,6 +61,7 @@ jobs:
       # point at this repo and this workflow file. No token, no OTP; provenance comes with it.
       - if: steps.version.outputs.publish == 'true'
         name: Publish to npm
+        working-directory: packages/chorograph
         run: |
           npm install -g npm@11 # OIDC publish needs npm >= 11.5.1
           npm publish --access public --provenance

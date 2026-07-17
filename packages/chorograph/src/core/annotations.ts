@@ -26,6 +26,7 @@
  */
 import ts from "typescript";
 import type { Edge, EdgeKind, Graph, GraphMeta, Node, NodeKind } from "./model.ts";
+import { CONTAINS, EDGE_TAGS, MEMBER_KINDS, NODE_TAGS } from "./model.ts";
 
 /** One source file to scan: a path (used in ids of error messages) and its text. */
 export interface SourceInput {
@@ -50,51 +51,10 @@ interface Block {
   readonly tags: readonly RawTag[];
 }
 
-const NODE_TAGS: Readonly<Record<string, NodeKind>> = {
-  domain: "domain",
-  service: "service",
-  endpoint: "endpoint",
-  fn: "function",
-  function: "function",
-  job: "job",
-  database: "database",
-  table: "table",
-  cache: "cache",
-  bucket: "bucket",
-  queue: "queue",
-  event: "event",
-  external: "external",
-};
-
-const EDGE_TAGS: ReadonlySet<EdgeKind> = new Set(["calls", "reads", "writes", "emits", "consumes", "uses"]);
-
 const isChorographTag = (tag: string): boolean =>
   tag === "system" || tag === "of" || tag in NODE_TAGS || EDGE_TAGS.has(tag as EdgeKind);
 
-/**
- * What can live inside what — the whole hierarchy in one table. Domains group the map; services
- * own their surfaces, internals, and private infrastructure; endpoints group (REST resources)
- * and contain the functions that implement them; functions decompose into functions.
- */
-const CONTAINS: Readonly<Record<NodeKind, readonly NodeKind[]>> = {
-  domain: ["domain", "service", "database", "cache", "bucket", "queue", "event", "external"],
-  service: ["endpoint", "function", "job", "database", "cache", "bucket", "queue"],
-  endpoint: ["endpoint", "function"],
-  function: ["function"],
-  job: ["function"],
-  database: ["table"],
-  table: [],
-  cache: [],
-  bucket: [],
-  queue: [],
-  event: [],
-  external: [],
-};
-
 const canContain = (parent: NodeKind, child: NodeKind): boolean => CONTAINS[parent].includes(child);
-
-/** Kinds that make no sense floating free — they must resolve to a parent. */
-const MEMBER_KINDS: ReadonlySet<NodeKind> = new Set(["endpoint", "function", "job", "table"]);
 
 const slug = (v: string): string =>
   v

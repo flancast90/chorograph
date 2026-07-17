@@ -1,5 +1,7 @@
 node_modules/
 dist/
 .chorograph/
+# copied from the repo root at build time for npm
+packages/chorograph/README.md
 *.log
 .DS_Store

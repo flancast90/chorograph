@@ -9,5 +9,5 @@
 export { buildGraph } from "./core/annotations.ts";
 export type { SourceInput } from "./core/annotations.ts";
 export { loadGraph, expandPaths } from "./load.ts";
-export { NODE_KINDS, EDGE_KINDS } from "./core/model.ts";
-export type { Graph, GraphMeta, Node, Edge, NodeKind, EdgeKind } from "./core/model.ts";
+export { NODE_KINDS, EDGE_KINDS, NODE_TAGS, EDGE_TAGS, CONTAINS, MEMBER_KINDS } from "./core/model.ts";
+export type { Graph, GraphCounts, GraphMeta, Node, Edge, NodeKind, EdgeKind } from "./core/model.ts";

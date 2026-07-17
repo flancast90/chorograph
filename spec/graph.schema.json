@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flancast90/chorograph/main/spec/graph.schema.json",
+  "title": "chorograph graph.json",
+  "$comment": "GENERATED from spec/contract.json — do not edit. Regenerate with `pnpm codegen`.",
+  "$ref": "#/$defs/Graph",
+  "$defs": {
+    "NodeKind": {
+      "type": "string",
+      "enum": [
+        "domain",
+        "service",
+        "endpoint",
+        "function",
+        "job",
+        "database",
+        "table",
+        "cache",
+        "bucket",
+        "queue",
+        "event",
+        "external"
+      ]
+    },
+    "EdgeKind": {
+      "type": "string",
+      "enum": [
+        "calls",
+        "reads",
+        "writes",
+        "emits",
+        "consumes",
+        "uses"
+      ]
+    },
+    "Node": {
+      "type": "object",
+      "description": "A single thing on the map.",
+      "properties": {
+        "id": {
+          "description": "Stable slug path derived from names: commerce/orders/post-orders.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/NodeKind"
+        },
+        "parent": {
+          "description": "Containment parent id, or null for a top-level node.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "description": "One or two sentences on what this thing is for. Shown in the detail panel.",
+          "type": "string"
+        },
+        "tech": {
+          "description": "Implementation note: PostgreSQL 16, Node.js, Kafka.",
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "file": {
+          "description": "Where the declaring comment lives, relative to where chorograph ran.",
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "parent",
+        "tags"
+      ]
+    },
+    "Edge": {
+      "type": "object",
+      "description": "A directed connection between two nodes. from is the thing doing the verb, to is the thing the verb is done to.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/EdgeKind"
+        },
+        "label": {
+          "description": "Optional annotation: protocol (HTTP, gRPC) or a short verb phrase — the why.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "from",
+        "to",
+        "kind"
+      ]
+    },
+    "GraphCounts": {
+      "type": "object",
+      "description": "How many of each kind the graph holds; a cheap summary for tooling.",
+      "properties": {
+        "nodes": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/NodeKind"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "edges": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/EdgeKind"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ]
+    },
+    "GraphMeta": {
+      "type": "object",
+      "description": "Provenance and summary for a generated graph.",
+      "properties": {
+        "tool": {
+          "const": "chorograph"
+        },
+        "version": {
+          "description": "Version of the generator that produced the file.",
+          "type": "string"
+        },
+        "generatedAt": {
+          "description": "ISO 8601 timestamp.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The system name from the @system comment.",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/GraphCounts"
+        }
+      },
+      "required": [
+        "tool",
+        "version",
+        "generatedAt",
+        "name",
+        "counts"
+      ]
+    },
+    "Graph": {
+      "type": "object",
+      "description": "The complete, serialisable map. This is the on-disk graph.json contract.",
+      "properties": {
+        "meta": {
+          "$ref": "#/$defs/GraphMeta"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Edge"
+          }
+        }
+      },
+      "required": [
+        "meta",
+        "nodes",
+        "edges"
+      ]
+    }
+  }
+}

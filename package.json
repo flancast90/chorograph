@@ -1,67 +1,23 @@
 {
-  "name": "chorograph",
-  "version": "0.3.0",
-  "description": "Architecture in doc comments — annotate your services, databases, and events where they live; get a clear, shareable map. No imports, no config, nothing executed.",
+  "name": "@chorograph/monorepo",
+  "private": true,
   "type": "module",
   "license": "MIT",
-  "author": "flancast90",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/flancast90/chorograph.git"
+  "scripts": {
+    "codegen": "node scripts/codegen.mjs",
+    "codegen:check": "node scripts/codegen.mjs --check",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "example": "tsx packages/chorograph/src/cli.ts render examples/streamline",
+    "chorograph": "tsx packages/chorograph/src/cli.ts"
   },
-  "homepage": "https://github.com/flancast90/chorograph#readme",
-  "bugs": {
-    "url": "https://github.com/flancast90/chorograph/issues"
-  },
-  "keywords": [
-    "architecture",
-    "architecture-as-code",
-    "diagram",
-    "c4",
-    "visualization",
-    "system-design"
-  ],
-  "bin": {
-    "chorograph": "dist/cli.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=18"
+  "devDependencies": {
+    "tsx": "^4.19.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  },
-  "scripts": {
-    "chorograph": "tsx src/cli.ts",
-    "example": "tsx src/cli.ts render examples/streamline",
-    "build": "node scripts/build.mjs",
-    "prepare": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "typescript": "^5.7.2"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.2",
-    "esbuild": "^0.24.2",
-    "@types/react": "^18.3.17",
-    "@types/react-dom": "^18.3.5",
-    "elkjs": "^0.9.3",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tsx": "^4.19.2",
-    "vitest": "^2.1.8"
   }
 }

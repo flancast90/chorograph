@@ -22,34 +22,42 @@ examples/streamline` and refresh the browser; the scan re-runs on every request)
 
 ## Layout
 
+The repo is a pnpm workspace, laid out so more language packages can join later (a Python
+package would live at `packages/chorograph-py/`, generated from the same spec).
+
 | path | what lives there |
 | --- | --- |
-| `src/core/annotations.ts` | the scanner: comment extraction, tag grammar, graph assembly |
-| `src/core/model.ts` | the `Graph` contract, i.e. the on-disk `graph.json` shape |
-| `src/load.ts` | file walking and reading |
-| `src/cli.ts`, `src/serve.ts`, `src/report.ts` | the CLI, the dev server, HTML report generation |
-| `src/viewer/` | the React viewer bundled into every report |
+| `spec/contract.json` | **the source of truth**: node/edge kinds, tag grammar, containment matrix, `graph.json` shape |
+| `spec/graph.schema.json` | JSON Schema for `graph.json`, generated from the spec — validate a graph in any language |
+| `scripts/codegen.mjs` | turns the spec into per-language bindings; `pnpm codegen` regenerates, CI verifies |
+| `packages/chorograph/` | the TypeScript package published to npm |
+| `packages/chorograph/src/core/annotations.ts` | the scanner: comment extraction, tag grammar, graph assembly |
+| `packages/chorograph/src/core/model.ts` | the `Graph` contract (re-exports the generated `model.gen.ts`) |
+| `packages/chorograph/src/viewer/` | the React viewer bundled into every report |
 | `examples/streamline/` | the reference annotated codebase, used for manual testing |
 | `skills/chorograph/` | the agent skill, installable via `npx skills add flancast90/Chorograph` (symlinked into `.agents/` and `.claude/` so cloners get it too) |
 | `docs/` | design principles, README assets |
-| `scripts/build.mjs` | builds `dist/` for publishing |
 
-Two invariants worth knowing before you edit:
+Three invariants worth knowing before you edit:
 
-- **`src/viewer/types.ts` mirrors `src/core/model.ts` by hand.** The viewer must not import
-  core, so the report bundle stays browser-only. If you change one, change the other.
+- **`*.gen.ts` files and `spec/graph.schema.json` are generated.** To change kinds, tags, the
+  containment matrix, or the `graph.json` shape: edit `spec/contract.json`, run `pnpm codegen`,
+  commit both. CI fails if they drift. Never edit generated files directly.
+- **The viewer must not import core** (the report bundle stays browser-only), which is why it has
+  its own generated copy of the contract.
 - **`dist/viewer.js` is a prebuilt artifact.** `report.ts` prefers it over bundling on the fly,
-  so a stale `dist/` can mask viewer changes. `rm -rf dist` (or `pnpm build`) when the report
-  looks inexplicably old.
+  so a stale `dist/` can mask viewer changes. `rm -rf packages/chorograph/dist` (or `pnpm build`)
+  when the report looks inexplicably old.
 
 ## Checks
 
-Everything the CI runs, you can run locally:
+Everything the CI runs, you can run locally, from the repo root:
 
 ```bash
-pnpm typecheck   # tsc, strict, no emit
-pnpm test        # vitest; the grammar suite in src/core/annotations.test.ts
-pnpm build       # dist/: CLI, library, viewer bundle, .d.ts files
+pnpm codegen:check   # generated code matches spec/contract.json
+pnpm typecheck       # tsc, strict, no emit
+pnpm test            # vitest; the grammar suite + the graph.json schema conformance test
+pnpm build           # dist/: CLI, library, viewer bundle, .d.ts files
 ```
 
 All three must pass before a PR is mergeable. There is no lint step wired up yet; match the style
@@ -64,7 +72,8 @@ time. Hold new errors to that bar, and add a test asserting the message.
 
 **The grammar grows reluctantly.** Every tag and key is something users must learn and agents
 must be taught, so the bias is strongly toward zero new surface. If a new tag is genuinely
-warranted, the same PR updates `skills/chorograph/SKILL.md`, the README grammar table, and the tests.
+warranted, it starts in `spec/contract.json`, and the same PR updates
+`skills/chorograph/SKILL.md`, the README grammar table, and the tests.
 
 **Tests describe behaviour, not implementation.** The suite is organised by what a user would
 observe ("nests functions inside endpoints", "rejects targets that match nothing, with
@@ -86,7 +95,8 @@ works well and is what the agents do too).
 
 ## Releases
 
-Publishing is automated. When a commit on `main` carries a `package.json` version that isn't on
-npm yet, CI builds, tests, publishes with provenance, and tags `v<version>`. So to release:
+Publishing is automated. When a commit on `main` carries a `packages/chorograph/package.json`
+version that isn't on npm yet, CI builds, tests, publishes with provenance, and tags `v<version>`.
+So to release:
 bump the version in your PR (patch for fixes, minor for grammar or viewer additions), merge, done.
 Never `npm publish` by hand.

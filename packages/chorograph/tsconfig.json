@@ -17,6 +17,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "examples/**/*.ts", "scripts/**/*.mjs"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "../../examples/**/*.ts", "scripts/**/*.mjs", "../../scripts/**/*.mjs"],
   "exclude": ["dist", "node_modules"]
 }

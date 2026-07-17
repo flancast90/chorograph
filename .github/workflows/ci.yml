@@ -26,6 +26,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Generated code (TS bindings, JSON Schema) must match spec/contract.json.
+      - run: pnpm codegen:check
+
       - run: pnpm typecheck
 
       - run: pnpm test
@@ -33,4 +36,4 @@ jobs:
       - run: pnpm build
 
       # The built CLI must be able to scan the example end to end.
-      - run: node dist/cli.js render examples/streamline --json --quiet
+      - run: node packages/chorograph/dist/cli.js render examples/streamline --json --quiet

@@ -43,10 +43,13 @@ await build({
 
 cpSync(join(root, "src/report/template.html"), join(dist, "report/template.html"));
 
+// npm reads the README from the package directory; the repo keeps one canonical copy at the root.
+cpSync(join(root, "../../README.md"), join(root, "README.md"));
+
 // Type declarations for the public API (`import { buildGraph } from "chorograph"`).
 execSync("npx tsc -p tsconfig.build.json", { cwd: root, stdio: "inherit" });
 // Source uses explicit `.ts` specifiers (allowImportingTsExtensions); consumers need `.js`.
-for (const f of ["index.d.ts", "load.d.ts", "core/annotations.d.ts", "core/model.d.ts"]) {
+for (const f of ["index.d.ts", "load.d.ts", "core/annotations.d.ts", "core/model.d.ts", "core/model.gen.d.ts"]) {
   const p = join(dist, f);
   writeFileSync(p, readFileSync(p, "utf8").replaceAll('.ts"', '.js"'));
 }

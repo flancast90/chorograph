@@ -93,6 +93,10 @@ npx skills add flancast90/Chorograph
 
 Anyone cloning this repo gets it automatically: the skill is committed under `.agents/skills/` and `.claude/skills/`, where Cursor, Claude Code, and friends pick it up.
 
+## The contract
+
+`graph.json` is a stable, language-neutral format. [`spec/contract.json`](spec/contract.json) defines the kinds, the grammar, and the containment matrix in one file; the TypeScript bindings and [`spec/graph.schema.json`](spec/graph.schema.json) (a JSON Schema you can validate against from any language) are generated from it. Tooling in other languages builds on the spec, not on this package.
+
 ## Contributing
 
 `pnpm install && pnpm example` gets you a rendered map in under a minute; `pnpm typecheck && pnpm test` is the gate. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the conventions, [`AGENTS.md`](AGENTS.md) the agent version, and [`docs/design-principles.md`](docs/design-principles.md) the taste. Releases are automatic: merge a version bump to `main` and CI publishes to npm.

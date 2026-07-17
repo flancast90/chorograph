@@ -1,0 +1,150 @@
+{
+  "$comment": "Single source of truth for the chorograph contract: node/edge kinds, the tag grammar, the containment matrix, and the graph.json wire format. Every language package generates its types and constants from this file (`pnpm codegen`); CI fails if generated code drifts. Edit this, never the *.gen.* files.",
+  "spec": 1,
+  "nodeKinds": [
+    {
+      "kind": "domain",
+      "tags": ["domain"],
+      "doc": "a bounded context / grouping — the only kind that exists purely to contain others",
+      "contains": ["domain", "service", "database", "cache", "bucket", "queue", "event", "external"],
+      "requiresParent": false
+    },
+    {
+      "kind": "service",
+      "tags": ["service"],
+      "doc": "a deployable process: API server, worker, consumer",
+      "contains": ["endpoint", "function", "job", "database", "cache", "bucket", "queue"],
+      "requiresParent": false
+    },
+    {
+      "kind": "endpoint",
+      "tags": ["endpoint"],
+      "doc": "an API surface a service exposes: HTTP route, RPC method, GraphQL field",
+      "contains": ["endpoint", "function"],
+      "requiresParent": true
+    },
+    {
+      "kind": "function",
+      "tags": ["fn", "function"],
+      "doc": "a function inside a service that is architecturally significant",
+      "contains": ["function"],
+      "requiresParent": true
+    },
+    {
+      "kind": "job",
+      "tags": ["job"],
+      "doc": "scheduled or background work owned by a service",
+      "contains": ["function"],
+      "requiresParent": true
+    },
+    {
+      "kind": "database",
+      "tags": ["database"],
+      "doc": "a database instance or cluster",
+      "contains": ["table"],
+      "requiresParent": false
+    },
+    {
+      "kind": "table",
+      "tags": ["table"],
+      "doc": "a table / collection inside a database",
+      "contains": [],
+      "requiresParent": true
+    },
+    {
+      "kind": "cache",
+      "tags": ["cache"],
+      "doc": "an in-memory store: Redis, Memcached",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "bucket",
+      "tags": ["bucket"],
+      "doc": "blob storage: S3, GCS",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "queue",
+      "tags": ["queue"],
+      "doc": "a queue or topic: SQS, Kafka, Rabbit",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "event",
+      "tags": ["event"],
+      "doc": "a named domain event that flows between services",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "external",
+      "tags": ["external"],
+      "doc": "a third-party system you don't operate: Stripe, SendGrid",
+      "contains": [],
+      "requiresParent": false
+    }
+  ],
+  "edgeKinds": [
+    { "kind": "calls", "doc": "synchronous invocation: HTTP, RPC, an in-process call" },
+    { "kind": "reads", "doc": "reads state from a store" },
+    { "kind": "writes", "doc": "writes state to a store" },
+    { "kind": "emits", "doc": "publishes an event" },
+    { "kind": "consumes", "doc": "subscribes to an event" },
+    { "kind": "uses", "doc": "depends on, when no sharper verb fits: an external API, a cache" }
+  ],
+  "records": {
+    "Node": {
+      "doc": "A single thing on the map.",
+      "fields": [
+        { "name": "id", "type": "string", "doc": "Stable slug path derived from names: `commerce/orders/post-orders`." },
+        { "name": "name", "type": "string" },
+        { "name": "kind", "type": "NodeKind" },
+        { "name": "parent", "type": "string", "nullable": true, "doc": "Containment parent id, or `null` for a top-level node." },
+        { "name": "description", "type": "string", "optional": true, "doc": "One or two sentences on what this thing is for. Shown in the detail panel." },
+        { "name": "tech", "type": "string", "optional": true, "doc": "Implementation note: `PostgreSQL 16`, `Node.js`, `Kafka`." },
+        { "name": "tags", "type": "string[]" },
+        { "name": "file", "type": "string", "optional": true, "doc": "Where the declaring comment lives, relative to where chorograph ran." },
+        { "name": "line", "type": "int", "optional": true }
+      ]
+    },
+    "Edge": {
+      "doc": "A directed connection between two nodes. `from` is the thing doing the verb, `to` is the thing the verb is done to.",
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "from", "type": "string" },
+        { "name": "to", "type": "string" },
+        { "name": "kind", "type": "EdgeKind" },
+        { "name": "label", "type": "string", "optional": true, "doc": "Optional annotation: protocol (`HTTP`, `gRPC`) or a short verb phrase — the why." }
+      ]
+    },
+    "GraphCounts": {
+      "doc": "How many of each kind the graph holds; a cheap summary for tooling.",
+      "fields": [
+        { "name": "nodes", "type": "countmap:NodeKind" },
+        { "name": "edges", "type": "countmap:EdgeKind" }
+      ]
+    },
+    "GraphMeta": {
+      "doc": "Provenance and summary for a generated graph.",
+      "fields": [
+        { "name": "tool", "type": "const:chorograph" },
+        { "name": "version", "type": "string", "doc": "Version of the generator that produced the file." },
+        { "name": "generatedAt", "type": "string", "doc": "ISO 8601 timestamp." },
+        { "name": "name", "type": "string", "doc": "The system name from the `@system` comment." },
+        { "name": "description", "type": "string", "optional": true },
+        { "name": "counts", "type": "GraphCounts" }
+      ]
+    },
+    "Graph": {
+      "doc": "The complete, serialisable map. This is the on-disk `graph.json` contract.",
+      "fields": [
+        { "name": "meta", "type": "GraphMeta" },
+        { "name": "nodes", "type": "Node[]" },
+        { "name": "edges", "type": "Edge[]" }
+      ]
+    }
+  }
+}
