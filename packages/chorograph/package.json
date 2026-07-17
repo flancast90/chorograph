@@ -53,6 +53,7 @@
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "elkjs": "^0.9.3",
     "esbuild": "^0.24.2",
     "react": "^18.3.1",

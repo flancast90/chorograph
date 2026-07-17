@@ -6,8 +6,8 @@
  * those things talk to each other. Everything is declared explicitly, in doc comments on the real
  * source code, parsed statically by `core/annotations.ts`.
  *
- * The definitions themselves are generated from `spec/contract.json` (the cross-language source
- * of truth) into `model.gen.ts`; this module is the stable import path.
+ * Types are generated from `spec/graph.schema.json` (json-schema-to-typescript) and the grammar
+ * constants derive from `spec/grammar.json`; this module is the stable import path for both.
  */
 export type { NodeKind, EdgeKind, Node, Edge, GraphCounts, GraphMeta, Graph } from "./model.gen.ts";
-export { NODE_KINDS, EDGE_KINDS, NODE_TAGS, EDGE_TAGS, CONTAINS, MEMBER_KINDS } from "./model.gen.ts";
+export { NODE_KINDS, EDGE_KINDS, NODE_TAGS, EDGE_TAGS, CONTAINS, MEMBER_KINDS } from "./grammar.ts";

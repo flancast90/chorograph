@@ -573,7 +573,7 @@ export function buildGraph(
     name: p.name,
     kind: p.kind,
     parent: p.parent ? p.parent.id! : null,
-    tags: p.tags,
+    tags: [...p.tags],
     ...(p.description !== undefined ? { description: p.description } : {}),
     ...(p.tech !== undefined ? { tech: p.tech } : {}),
     file: p.file,

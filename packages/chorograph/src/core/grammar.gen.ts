@@ -1,0 +1,171 @@
+/**
+ * GENERATED FILE — do not edit.
+ *
+ * Source of truth: spec/grammar.json, validated by spec/grammar.schema.json. Regenerate with `pnpm codegen` at the repo root.
+ */
+
+export default {
+  "nodeKinds": [
+    {
+      "kind": "domain",
+      "tags": [
+        "domain"
+      ],
+      "doc": "a bounded context / grouping — the only kind that exists purely to contain others",
+      "contains": [
+        "domain",
+        "service",
+        "database",
+        "cache",
+        "bucket",
+        "queue",
+        "event",
+        "external"
+      ],
+      "requiresParent": false
+    },
+    {
+      "kind": "service",
+      "tags": [
+        "service"
+      ],
+      "doc": "a deployable process: API server, worker, consumer",
+      "contains": [
+        "endpoint",
+        "function",
+        "job",
+        "database",
+        "cache",
+        "bucket",
+        "queue"
+      ],
+      "requiresParent": false
+    },
+    {
+      "kind": "endpoint",
+      "tags": [
+        "endpoint"
+      ],
+      "doc": "an API surface a service exposes: HTTP route, RPC method, GraphQL field",
+      "contains": [
+        "endpoint",
+        "function"
+      ],
+      "requiresParent": true
+    },
+    {
+      "kind": "function",
+      "tags": [
+        "fn",
+        "function"
+      ],
+      "doc": "a function inside a service that is architecturally significant",
+      "contains": [
+        "function"
+      ],
+      "requiresParent": true
+    },
+    {
+      "kind": "job",
+      "tags": [
+        "job"
+      ],
+      "doc": "scheduled or background work owned by a service",
+      "contains": [
+        "function"
+      ],
+      "requiresParent": true
+    },
+    {
+      "kind": "database",
+      "tags": [
+        "database"
+      ],
+      "doc": "a database instance or cluster",
+      "contains": [
+        "table"
+      ],
+      "requiresParent": false
+    },
+    {
+      "kind": "table",
+      "tags": [
+        "table"
+      ],
+      "doc": "a table / collection inside a database",
+      "contains": [],
+      "requiresParent": true
+    },
+    {
+      "kind": "cache",
+      "tags": [
+        "cache"
+      ],
+      "doc": "an in-memory store: Redis, Memcached",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "bucket",
+      "tags": [
+        "bucket"
+      ],
+      "doc": "blob storage: S3, GCS",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "queue",
+      "tags": [
+        "queue"
+      ],
+      "doc": "a queue or topic: SQS, Kafka, Rabbit",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "event",
+      "tags": [
+        "event"
+      ],
+      "doc": "a named domain event that flows between services",
+      "contains": [],
+      "requiresParent": false
+    },
+    {
+      "kind": "external",
+      "tags": [
+        "external"
+      ],
+      "doc": "a third-party system you don't operate: Stripe, SendGrid",
+      "contains": [],
+      "requiresParent": false
+    }
+  ],
+  "edgeKinds": [
+    {
+      "kind": "calls",
+      "doc": "synchronous invocation: HTTP, RPC, an in-process call"
+    },
+    {
+      "kind": "reads",
+      "doc": "reads state from a store"
+    },
+    {
+      "kind": "writes",
+      "doc": "writes state to a store"
+    },
+    {
+      "kind": "emits",
+      "doc": "publishes an event"
+    },
+    {
+      "kind": "consumes",
+      "doc": "subscribes to an event"
+    },
+    {
+      "kind": "uses",
+      "doc": "depends on, when no sharper verb fits: an external API, a cache"
+    }
+  ]
+} as const;

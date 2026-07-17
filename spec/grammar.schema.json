@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/flancast90/chorograph/main/spec/grammar.schema.json",
+  "title": "Grammar",
+  "description": "Validates grammar.json: the doc-comment tag vocabulary and the containment rules every chorograph implementation shares. The kind lists here must match the NodeKind/EdgeKind enums in graph.schema.json; codegen cross-checks that.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nodeKinds", "edgeKinds"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "nodeKinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "tags", "doc", "contains", "requiresParent"],
+        "properties": {
+          "kind": { "type": "string", "minLength": 1 },
+          "tags": {
+            "description": "Doc-comment tags that declare this kind (aliases allowed, e.g. @fn and @function).",
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z]+$" }
+          },
+          "doc": { "type": "string", "minLength": 1 },
+          "contains": {
+            "description": "Kinds this kind may contain. Empty means it is a leaf.",
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "requiresParent": {
+            "description": "True for kinds that make no sense floating free — they must resolve to a parent.",
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "edgeKinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "doc"],
+        "properties": {
+          "kind": { "type": "string", "pattern": "^[a-z]+$" },
+          "doc": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

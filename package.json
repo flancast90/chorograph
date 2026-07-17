@@ -13,6 +13,9 @@
     "chorograph": "tsx packages/chorograph/src/cli.ts"
   },
   "devDependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "json-schema-to-typescript": "^15.0.4",
     "tsx": "^4.19.2"
   },
   "pnpm": {

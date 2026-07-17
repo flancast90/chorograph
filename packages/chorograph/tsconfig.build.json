@@ -8,5 +8,13 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/index.ts", "src/load.ts", "src/core/annotations.ts", "src/core/model.ts", "src/core/model.gen.ts"]
+  "include": [
+    "src/index.ts",
+    "src/load.ts",
+    "src/core/annotations.ts",
+    "src/core/model.ts",
+    "src/core/model.gen.ts",
+    "src/core/grammar.ts",
+    "src/core/grammar.gen.ts"
+  ]
 }

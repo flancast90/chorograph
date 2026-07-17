@@ -95,7 +95,7 @@ Anyone cloning this repo gets it automatically: the skill is committed under `.a
 
 ## The contract
 
-`graph.json` is a stable, language-neutral format. [`spec/contract.json`](spec/contract.json) defines the kinds, the grammar, and the containment matrix in one file; the TypeScript bindings and [`spec/graph.schema.json`](spec/graph.schema.json) (a JSON Schema you can validate against from any language) are generated from it. Tooling in other languages builds on the spec, not on this package.
+`graph.json` is a stable, language-neutral format defined by a standard JSON Schema, [`spec/graph.schema.json`](spec/graph.schema.json); the tag vocabulary and containment rules live beside it in [`spec/grammar.json`](spec/grammar.json). The TypeScript bindings are generated from the spec with off-the-shelf tooling, and implementations in other languages build on the same two files — see [`spec/README.md`](spec/README.md).
 
 ## Contributing
 

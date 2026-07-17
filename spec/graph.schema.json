@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/flancast90/chorograph/main/spec/graph.schema.json",
-  "title": "chorograph graph.json",
-  "$comment": "GENERATED from spec/contract.json — do not edit. Regenerate with `pnpm codegen`.",
-  "$ref": "#/$defs/Graph",
+  "title": "Graph",
+  "description": "The complete, serialisable chorograph map. This is the on-disk graph.json contract; every chorograph implementation, in any language, emits and consumes documents valid under this schema.",
   "$defs": {
     "NodeKind": {
+      "title": "NodeKind",
+      "description": "What a node is. A small closed set, one icon and one colour each. Per-kind semantics and the containment rules live in grammar.json.",
       "type": "string",
       "enum": [
         "domain",
@@ -23,6 +24,8 @@
       ]
     },
     "EdgeKind": {
+      "title": "EdgeKind",
+      "description": "How two nodes are connected. `from` is the thing doing the verb, `to` is the thing the verb is done to.",
       "type": "string",
       "enum": [
         "calls",
@@ -34,12 +37,21 @@
       ]
     },
     "Node": {
-      "type": "object",
+      "title": "Node",
       "description": "A single thing on the map.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "parent",
+        "tags"
+      ],
       "properties": {
         "id": {
-          "description": "Stable slug path derived from names: commerce/orders/post-orders.",
-          "type": "string"
+          "type": "string",
+          "description": "Stable slug path derived from names: `commerce/orders/post-orders`."
         },
         "name": {
           "type": "string"
@@ -48,23 +60,19 @@
           "$ref": "#/$defs/NodeKind"
         },
         "parent": {
-          "description": "Containment parent id, or null for a top-level node.",
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Containment parent id, or null for a top-level node."
         },
         "description": {
-          "description": "One or two sentences on what this thing is for. Shown in the detail panel.",
-          "type": "string"
+          "type": "string",
+          "description": "One or two sentences on what this thing is for. Shown in the detail panel."
         },
         "tech": {
-          "description": "Implementation note: PostgreSQL 16, Node.js, Kafka.",
-          "type": "string"
+          "type": "string",
+          "description": "Implementation note: `PostgreSQL 16`, `Node.js`, `Kafka`."
         },
         "tags": {
           "type": "array",
@@ -73,24 +81,26 @@
           }
         },
         "file": {
-          "description": "Where the declaring comment lives, relative to where chorograph ran.",
-          "type": "string"
+          "type": "string",
+          "description": "Where the declaring comment lives, relative to where chorograph ran."
         },
         "line": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1
         }
-      },
-      "required": [
-        "id",
-        "name",
-        "kind",
-        "parent",
-        "tags"
-      ]
+      }
     },
     "Edge": {
+      "title": "Edge",
+      "description": "A directed connection between two nodes.",
       "type": "object",
-      "description": "A directed connection between two nodes. from is the thing doing the verb, to is the thing the verb is done to.",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "from",
+        "to",
+        "kind"
+      ],
       "properties": {
         "id": {
           "type": "string"
@@ -105,20 +115,20 @@
           "$ref": "#/$defs/EdgeKind"
         },
         "label": {
-          "description": "Optional annotation: protocol (HTTP, gRPC) or a short verb phrase — the why.",
-          "type": "string"
+          "type": "string",
+          "description": "Optional annotation: protocol (`HTTP`, `gRPC`) or a short verb phrase — the why."
         }
-      },
-      "required": [
-        "id",
-        "from",
-        "to",
-        "kind"
-      ]
+      }
     },
     "GraphCounts": {
-      "type": "object",
+      "title": "GraphCounts",
       "description": "How many of each kind the graph holds; a cheap summary for tooling.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "edges"
+      ],
       "properties": {
         "nodes": {
           "type": "object",
@@ -128,7 +138,8 @@
           "additionalProperties": {
             "type": "integer",
             "minimum": 0
-          }
+          },
+          "tsType": "Readonly<Partial<Record<NodeKind, number>>>"
         },
         "edges": {
           "type": "object",
@@ -138,32 +149,39 @@
           "additionalProperties": {
             "type": "integer",
             "minimum": 0
-          }
+          },
+          "tsType": "Readonly<Partial<Record<EdgeKind, number>>>"
         }
-      },
-      "required": [
-        "nodes",
-        "edges"
-      ]
+      }
     },
     "GraphMeta": {
-      "type": "object",
+      "title": "GraphMeta",
       "description": "Provenance and summary for a generated graph.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tool",
+        "version",
+        "generatedAt",
+        "name",
+        "counts"
+      ],
       "properties": {
         "tool": {
           "const": "chorograph"
         },
         "version": {
-          "description": "Version of the generator that produced the file.",
-          "type": "string"
+          "type": "string",
+          "description": "Version of the generator that produced the file."
         },
         "generatedAt": {
-          "description": "ISO 8601 timestamp.",
-          "type": "string"
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp."
         },
         "name": {
-          "description": "The system name from the @system comment.",
-          "type": "string"
+          "type": "string",
+          "description": "The system name from the `@system` comment."
         },
         "description": {
           "type": "string"
@@ -171,40 +189,31 @@
         "counts": {
           "$ref": "#/$defs/GraphCounts"
         }
-      },
-      "required": [
-        "tool",
-        "version",
-        "generatedAt",
-        "name",
-        "counts"
-      ]
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "meta",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "meta": {
+      "$ref": "#/$defs/GraphMeta"
     },
-    "Graph": {
-      "type": "object",
-      "description": "The complete, serialisable map. This is the on-disk graph.json contract.",
-      "properties": {
-        "meta": {
-          "$ref": "#/$defs/GraphMeta"
-        },
-        "nodes": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Node"
-          }
-        },
-        "edges": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Edge"
-          }
-        }
-      },
-      "required": [
-        "meta",
-        "nodes",
-        "edges"
-      ]
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Edge"
+      }
     }
   }
 }

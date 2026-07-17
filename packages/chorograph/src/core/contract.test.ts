@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import { buildGraph } from "./annotations.ts";
 
@@ -37,7 +38,9 @@ export function placeOrder() {}
 `,
       },
     ]);
-    const ajv = new Ajv2020({ allErrors: true });
+    // `tsType` is json-schema-to-typescript's extension keyword; ajv treats it as a no-op.
+    const ajv = new Ajv2020({ allErrors: true, keywords: ["tsType"] });
+    addFormats(ajv);
     const validate = ajv.compile(schema);
     const valid = validate(JSON.parse(JSON.stringify(graph)));
     expect(validate.errors ?? []).toEqual([]);

@@ -27,9 +27,9 @@ package would live at `packages/chorograph-py/`, generated from the same spec).
 
 | path | what lives there |
 | --- | --- |
-| `spec/contract.json` | **the source of truth**: node/edge kinds, tag grammar, containment matrix, `graph.json` shape |
-| `spec/graph.schema.json` | JSON Schema for `graph.json`, generated from the spec — validate a graph in any language |
-| `scripts/codegen.mjs` | turns the spec into per-language bindings; `pnpm codegen` regenerates, CI verifies |
+| `spec/graph.schema.json` | **the wire contract**: a standard JSON Schema for `graph.json` — validate a graph in any language |
+| `spec/grammar.json` | the tag vocabulary and containment rules, validated by `spec/grammar.schema.json` |
+| `scripts/codegen.mjs` | spec → bindings via json-schema-to-typescript + a verbatim grammar embed; `pnpm codegen` regenerates, CI verifies |
 | `packages/chorograph/` | the TypeScript package published to npm |
 | `packages/chorograph/src/core/annotations.ts` | the scanner: comment extraction, tag grammar, graph assembly |
 | `packages/chorograph/src/core/model.ts` | the `Graph` contract (re-exports the generated `model.gen.ts`) |
@@ -40,9 +40,9 @@ package would live at `packages/chorograph-py/`, generated from the same spec).
 
 Three invariants worth knowing before you edit:
 
-- **`*.gen.ts` files and `spec/graph.schema.json` are generated.** To change kinds, tags, the
-  containment matrix, or the `graph.json` shape: edit `spec/contract.json`, run `pnpm codegen`,
-  commit both. CI fails if they drift. Never edit generated files directly.
+- **`*.gen.ts` files are generated.** To change kinds, tags, the containment matrix, or the
+  `graph.json` shape: edit `spec/graph.schema.json` and/or `spec/grammar.json`, run
+  `pnpm codegen`, commit both. CI fails if they drift. Never edit generated files directly.
 - **The viewer must not import core** (the report bundle stays browser-only), which is why it has
   its own generated copy of the contract.
 - **`dist/viewer.js` is a prebuilt artifact.** `report.ts` prefers it over bundling on the fly,
@@ -54,7 +54,7 @@ Three invariants worth knowing before you edit:
 Everything the CI runs, you can run locally, from the repo root:
 
 ```bash
-pnpm codegen:check   # generated code matches spec/contract.json
+pnpm codegen:check   # spec files are valid and generated code matches them
 pnpm typecheck       # tsc, strict, no emit
 pnpm test            # vitest; the grammar suite + the graph.json schema conformance test
 pnpm build           # dist/: CLI, library, viewer bundle, .d.ts files
@@ -72,7 +72,8 @@ time. Hold new errors to that bar, and add a test asserting the message.
 
 **The grammar grows reluctantly.** Every tag and key is something users must learn and agents
 must be taught, so the bias is strongly toward zero new surface. If a new tag is genuinely
-warranted, it starts in `spec/contract.json`, and the same PR updates
+warranted, it starts in `spec/grammar.json` (and `spec/graph.schema.json` if the wire format
+changes), and the same PR updates
 `skills/chorograph/SKILL.md`, the README grammar table, and the tests.
 
 **Tests describe behaviour, not implementation.** The suite is organised by what a user would

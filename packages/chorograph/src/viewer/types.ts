@@ -1,13 +1,17 @@
 /**
- * Viewer-side shapes, plus the Graph contract re-exported from the generated module.
+ * Viewer-side shapes, plus the Graph contract re-exported from the generated modules.
  *
  * The viewer must not import core (the report bundle stays browser-only), so it carries its own
- * generated copy of the contract in `model.gen.ts` — same `spec/contract.json`, same output.
+ * generated copies: `model.gen.ts` from `spec/graph.schema.json`, `grammar.gen.ts` from
+ * `spec/grammar.json` — same spec, same output as core's.
  */
+import grammar from "./grammar.gen.ts";
 import type { Edge, EdgeKind, Graph, Node, NodeKind } from "./model.gen.ts";
 
 export type { NodeKind, EdgeKind, Node, Edge, GraphCounts, GraphMeta, Graph } from "./model.gen.ts";
-export { NODE_KINDS, EDGE_KINDS } from "./model.gen.ts";
+
+export const NODE_KINDS: readonly NodeKind[] = grammar.nodeKinds.map((n) => n.kind);
+export const EDGE_KINDS: readonly EdgeKind[] = grammar.edgeKinds.map((e) => e.kind);
 
 declare global {
   interface Window {
