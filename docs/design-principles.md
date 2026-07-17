@@ -4,17 +4,20 @@ The map is the product. It has to feel like a technical drawing a staff engineer
 their desk — not a generated infographic. Two rules govern everything: **earn every pixel**, and
 **say exactly what was declared, nothing more**.
 
-## Declared, not scanned
+## Declared, not scanned — and declared *in the code*
 
 chorograph refuses to guess. There is no import scanning, no folder heuristics, no annotation
-grammar hidden in comments. A map is authored with `defineSystem` and renders exactly those nodes
-and edges. This is a design principle, not just an implementation choice:
+grammar hidden in comments. Architecture is declared with wrappers and decorators that live in the
+same lines as the implementation, and the map renders exactly those nodes and edges. This is a
+design principle, not just an implementation choice:
 
-- **Trust.** A reader can act on the map because a human asserted every line on it.
-- **Vocabulary.** Because nodes are declared, the kind set can stay small and closed — eleven
+- **Trust.** A reader can act on the map because someone asserted every line on it.
+- **Freshness.** The declaration wraps the real function: delete the code and the node goes with
+  it; edges are imports of real handles, so a stale edge is a compile error, not a lie on the map.
+- **Vocabulary.** Because nodes are declared, the kind set can stay small and closed — twelve
   kinds, six verbs — and every kind can afford its own icon and hue.
-- **Reviewability.** The definition is code; changes to the architecture show up in diffs of the
-  definition file, reviewed like everything else.
+- **Reviewability.** Declarations are code; architecture changes show up in the same diff as the
+  implementation, reviewed like everything else.
 
 ## Everything visible, always
 

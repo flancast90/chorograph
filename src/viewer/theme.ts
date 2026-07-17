@@ -40,6 +40,7 @@ export const KIND: Readonly<Record<NodeKind, KindStyle>> = {
   domain: { color: "#5C6572", chip: "#EEF1F5", label: "domain" },
   service: { color: "#3056C8", chip: "#E5EBFB", label: "service" },
   endpoint: { color: "#0E7A8A", chip: "#E0F1F4", label: "endpoint" },
+  function: { color: "#52606D", chip: "#EAEEF2", label: "function" },
   job: { color: "#7A4FC0", chip: "#EFE8FA", label: "job" },
   database: { color: "#1F8A4C", chip: "#E2F3E9", label: "database" },
   table: { color: "#4E9A6B", chip: "#E9F4ED", label: "table" },

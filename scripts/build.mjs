@@ -45,7 +45,7 @@ cpSync(join(root, "src/report/template.html"), join(dist, "report/template.html"
 // Type declarations for the public API (`import { defineSystem } from "chorograph"`).
 execSync("npx tsc -p tsconfig.build.json", { cwd: root, stdio: "inherit" });
 // Source uses explicit `.ts` specifiers (allowImportingTsExtensions); consumers need `.js`.
-for (const f of ["index.d.ts", "core/define.d.ts", "core/model.d.ts"]) {
+for (const f of ["index.d.ts", "core/declare.d.ts", "core/registry.d.ts", "core/model.d.ts"]) {
   const p = join(dist, f);
   writeFileSync(p, readFileSync(p, "utf8").replaceAll('.ts"', '.js"'));
 }

@@ -38,6 +38,20 @@ const PATHS: Record<NodeKind, React.ReactNode> = {
       <path d="M8 12.5 V14.5" {...STROKE} />
     </>
   ),
+  // ƒ — a function worth naming on the map.
+  function: (
+    <text
+      x="8"
+      y="12.5"
+      textAnchor="middle"
+      fontSize="13"
+      fontStyle="italic"
+      fontFamily="Georgia, 'Times New Roman', serif"
+      fill="currentColor"
+    >
+      ƒ
+    </text>
+  ),
   // Clock — scheduled work.
   job: (
     <>

@@ -42,7 +42,7 @@
   },
   "scripts": {
     "chorograph": "tsx src/cli.ts",
-    "example": "tsx src/cli.ts render examples/streamline.ts",
+    "example": "tsx src/cli.ts render examples/streamline",
     "build": "node scripts/build.mjs",
     "prepare": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",

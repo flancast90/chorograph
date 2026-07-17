@@ -5,9 +5,9 @@
  * services hold endpoints and jobs, databases hold tables — plus a set of directed {@link Edge}s
  * describing how those things talk to each other.
  *
- * Everything is declared explicitly in code with `defineSystem`. chorograph never scans source
- * files or guesses at structure: the map contains exactly what you wrote down, which is what makes
- * it trustworthy as an architecture document.
+ * Everything is declared explicitly, inside the real source code, with the wrappers and decorators
+ * in `core/declare.ts`. chorograph never infers structure from imports or folders: the map contains
+ * exactly what was written down, which is what makes it trustworthy as an architecture document.
  */
 
 /**
@@ -20,6 +20,7 @@ export type NodeKind =
   | "domain" // a bounded context / grouping — the only kind that exists purely to contain others
   | "service" // a deployable process: API server, worker, consumer
   | "endpoint" // an API surface a service exposes: HTTP route, RPC method, GraphQL field
+  | "function" // a function inside a service that is architecturally significant
   | "job" // scheduled or background work owned by a service
   | "database" // a database instance or cluster
   | "table" // a table / collection inside a database
@@ -33,6 +34,7 @@ export const NODE_KINDS: readonly NodeKind[] = [
   "domain",
   "service",
   "endpoint",
+  "function",
   "job",
   "database",
   "table",
@@ -51,6 +53,15 @@ export const NODE_KINDS: readonly NodeKind[] = [
 export type EdgeKind = "calls" | "reads" | "writes" | "emits" | "consumes" | "uses";
 
 export const EDGE_KINDS: readonly EdgeKind[] = ["calls", "reads", "writes", "emits", "consumes", "uses"];
+
+/** Descriptive fields accepted by every declaration. */
+export interface NodeOptions {
+  /** One or two sentences on what this thing is for. Shown in the detail panel. */
+  readonly description?: string;
+  /** Implementation note: `PostgreSQL 16`, `Go`, `Kafka`. */
+  readonly tech?: string;
+  readonly tags?: readonly string[];
+}
 
 /** A single thing on the map. */
 export interface Node {

@@ -1,85 +1,116 @@
 # chorograph
 
-Architecture as code. Declare your services, databases, events, and how they connect — in plain
-TypeScript — and get a clear, shareable map.
+Architecture declared inside the code. Wrap your functions, decorate your classes, and get a
+clear, shareable map of your system — services, databases, events, and how they connect, down to
+individual functions.
 
-chorograph deliberately does **not** scan your source code. Import graphs answer “which file
-requires which file”, which is rarely the question; an architecture map should answer “what are the
-parts of this system and how do they talk”. Those facts live in someone's head until they are
-written down, so chorograph gives you a small, typed API for writing them down — and renders
-exactly what you wrote, nothing inferred, nothing guessed. (If you want a scanned import graph,
-that's a different tool — reach for tree-sitter.)
+chorograph deliberately does **not** infer architecture. Import graphs answer “which file requires
+which file”, which is rarely the question; an architecture map should answer “what are the parts
+of this system and how do they talk”. chorograph gives you a small, typed API for asserting those
+facts *next to the code they describe* — the declaration wraps the real implementation, so deleting
+the code deletes the node, and edges are imports that break at compile time when they go stale.
+(If you want a scanned import graph, that's a different tool — reach for tree-sitter.)
 
 ## Quick start
 
-Create `system.ts`:
+Declare architecture in your real modules:
 
 ```ts
-import { defineSystem } from "chorograph";
+// src/architecture.ts — the anchors
+import { system, domain, external } from "chorograph";
 
-export default defineSystem("Acme", (s) => {
-  const gateway = s.service("api-gateway", { tech: "Node.js" });
-
-  const commerce = s.domain("Commerce");
-  const orders = commerce.service("orders");
-  const placeOrder = orders.endpoint("POST /orders");
-  const db = commerce.database("orders-db", { tech: "PostgreSQL 16" });
-  const ordersTable = db.table("orders");
-  const placed = commerce.event("order.placed");
-  const mailer = s.service("mailer");
-
-  s.calls(gateway, placeOrder, "HTTP");
-  s.writes(orders, ordersTable);
-  s.emits(orders, placed);
-  s.consumes(mailer, placed);
-});
+system("Acme");
+export const commerce = domain("Commerce");
+export const stripe = external("Stripe");
 ```
 
-Render it:
+```ts
+// src/orders.ts — real code, declared as it's written
+import { archRef } from "chorograph";
+import { commerce } from "./architecture.ts";
+
+export const orders = commerce.service("orders", { tech: "Node.js" });
+export const ordersDb = commerce.database("orders-db", { tech: "PostgreSQL 16" });
+export const ordersTable = ordersDb.table("orders");
+export const orderPlaced = commerce.event("order.placed");
+
+// The wrapper returns the handler unchanged — callers use placeOrder() like any function.
+export const placeOrder = orders.endpoint(
+  "POST /orders",
+  { writes: [ordersTable], emits: [orderPlaced] },
+  async (input: PlaceOrderInput) => {
+    /* real implementation */
+  },
+);
+```
+
+Render the map:
 
 ```bash
-npx chorograph render system.ts
+npx chorograph render src
 ```
 
-That writes `.chorograph/graph.json` and `.chorograph/report.html` next to the definition and opens
-the report — a single self-contained HTML file with no network dependencies. Commit it, attach it
-to a design doc, or send it to a teammate.
+That imports your modules, collects the declarations, and writes `.chorograph/graph.json` plus a
+self-contained `.chorograph/report.html` (no network dependencies — commit it, attach it to a
+design doc, send it to a teammate).
+
+## Two styles, one map
+
+**Function style** — wrappers that return your implementation unchanged, stamped with a node
+identity so other declarations can point at it. `service.endpoint(name, opts, impl)`,
+`service.fn(…)`, `service.job(…)`.
+
+**Class style** — stage-3 decorators (TypeScript 5, no config needed):
+
+```ts
+import { service, endpoint, func, job } from "chorograph";
+
+@service("payments", { domain: commerce, calls: [[stripe, "charge + refund"]] })
+export class PaymentsService {
+  @endpoint("POST /charge", { writes: [ledgerTable], emits: [paymentCaptured] })
+  async charge(orderId: string, amountCents: number) { /* real implementation */ }
+
+  @job("reconcile-payments", { reads: [ledgerTable] })
+  async reconcile() { /* … */ }
+
+  @func() // name defaults to the method name
+  computeFees(amountCents: number) { /* … */ }
+}
+```
+
+Mix freely. To point an edge at a decorated class from another module, use
+`archRef(PaymentsService)`.
 
 ## The vocabulary
 
 **Things** (nodes) — a small closed set; each kind has one icon and one colour everywhere:
 
-| kind | what it is | created with | contains |
-| --- | --- | --- | --- |
-| `domain` | a bounded context / grouping | `s.domain(name)` | anything |
-| `service` | a deployable process | `s.service(name)` | endpoints, jobs |
-| `endpoint` | an API surface a service exposes | `service.endpoint(name)` | — |
-| `job` | scheduled or background work | `service.job(name)` | — |
-| `database` | a database instance | `s.database(name)` | tables |
-| `table` | a table / collection | `database.table(name)` | — |
-| `cache` | Redis, Memcached, … | `s.cache(name)` | — |
-| `bucket` | S3, GCS, … | `s.bucket(name)` | — |
-| `queue` | SQS, Kafka topic, … | `s.queue(name)` | — |
-| `event` | a named domain event | `s.event(name)` | — |
-| `external` | a third party you don't operate | `s.external(name)` | — |
+| kind | what it is | contains |
+| --- | --- | --- |
+| `domain` | a bounded context / grouping | anything |
+| `service` | a deployable process | endpoints, functions, jobs |
+| `endpoint` | an API surface (`"POST /orders"`) | — |
+| `function` | an architecturally significant function | — |
+| `job` | scheduled or background work | — |
+| `database` | a database instance | tables |
+| `table` | a table / collection | — |
+| `cache` / `bucket` / `queue` | Redis / S3 / SQS and friends | — |
+| `event` | a named domain event | — |
+| `external` | a third party you don't operate | — |
 
-Every factory accepts `{ description, tech, tags }`. Descriptions surface in the detail panel, so a
-well-annotated map doubles as onboarding documentation.
+Every declaration accepts `{ description, tech, tags }` plus edge verbs. Descriptions surface in
+the detail panel, so a well-annotated map doubles as onboarding documentation.
 
-**Connections** (edges) — six verbs, each drawn in its own colour and line style. Every edge reads
-as a sentence, `from` doing the verb to `to`:
+**Connections** (edges) — six verbs declared on the node doing the verb, each drawn in its own
+colour and line style. Targets are handles (or wrapped functions, or `archRef` of classes) — never
+strings — so a typo is a compile error and a stale edge is a broken import:
 
 | verb | meaning |
 | --- | --- |
-| `s.calls(a, b, label?)` | request/response: `a` invokes `b` (label it `"HTTP"`, `"gRPC"`, …) |
-| `s.reads(a, store)` | `a` reads from a store |
-| `s.writes(a, store)` | `a` writes to a store |
-| `s.emits(a, event)` | `a` publishes the event |
-| `s.consumes(a, event)` | `a` subscribes to the event |
-| `s.uses(a, b, label?)` | escape hatch when no verb fits |
-
-Connections take the handles returned by the factories — never strings — so a typo is a compile
-error and renaming a service updates every edge that touches it.
+| `calls: [[target, "HTTP"]]` | request/response; label with the protocol |
+| `reads: [store]` / `writes: [store]` | store access |
+| `emits: [event]` / `consumes: [event]` | event flow (targets must be events) |
+| `uses: [thing]` | escape hatch when no verb fits |
 
 ## The viewer
 
@@ -98,41 +129,47 @@ once (ELK, deterministic) and the viewer stays out of your way:
 ## CLI
 
 ```
-chorograph render <system.ts>   definition → graph.json + report.html (default command)
-chorograph serve <system.ts>    serve the report; rebuilds from the definition on every refresh
+chorograph render <paths…>   load declarations → graph.json + report.html (default command)
+chorograph serve <paths…>    serve the report; re-imports the code on every refresh
 ```
+
+Paths are files or directories (walked recursively; `node_modules`, `dist`, dotfiles, and
+`*.test.*` are skipped). Modules are bundled with esbuild and imported, so declarations must be
+importable without side effects — keep server bootstraps behind a `main()` you don't pass in.
 
 | flag | effect |
 | --- | --- |
-| `--out <dir>` | output directory (default: `.chorograph` next to the definition) |
+| `--out <dir>` | output directory (default: `.chorograph` next to the first path) |
 | `--json` | write `graph.json` only; print meta to stdout; no HTML |
 | `--no-open` | don't open the report after rendering |
 | `--port <n>` | port for `serve` (default `4123`) |
 | `--quiet` | suppress progress output |
 
-Definition files are bundled with esbuild before loading, so they can import helpers, share
-constants, or be split across modules — anything that default-exports `defineSystem(…)` works.
+## Give your coding agent the skill
+
+[`docs/SKILL.md`](docs/SKILL.md) is an agent skill that teaches an LLM to declare architecture as
+it writes code — the vocabulary, both styles, where declarations go, and a granularity rubric for
+function-level nodes. Drop it into your skills directory (Cursor, Claude Code, etc.) and code
+written in your codebase keeps the map current as a side effect.
 
 ## Example
 
-[`examples/streamline.ts`](examples/streamline.ts) is a fictional e-commerce platform that
-exercises every kind and every verb — four domains, seven services, endpoints, jobs, three
-databases with tables, a cache, a bucket, a queue, five events, and three third parties:
+[`examples/streamline/`](examples/streamline/) is a fictional e-commerce platform written the way
+a real annotated codebase looks — architecture anchors, infra and event modules, and six services
+(five function-style, one decorator class) with working implementations:
 
 ```bash
-pnpm example   # renders examples/streamline.ts and writes examples/.chorograph/
+pnpm example   # renders examples/streamline → examples/streamline/.chorograph/
 ```
 
 ## Programmatic API
 
 ```ts
-import { defineSystem, type Graph } from "chorograph";
+import { collectGraph, resetRegistry, type Graph } from "chorograph";
 
-const system = defineSystem("Acme", (s) => {
-  /* … */
-});
-
-const graph: Graph = system.toGraph({ version: "1.0.0" });
+resetRegistry();
+await import("./my-annotated-modules.ts");
+const graph: Graph = collectGraph({ version: "1.0.0" });
 // graph.nodes, graph.edges, graph.meta.counts — the same contract as graph.json
 ```
 

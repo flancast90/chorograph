@@ -9,6 +9,7 @@ export type NodeKind =
   | "domain"
   | "service"
   | "endpoint"
+  | "function"
   | "job"
   | "database"
   | "table"
@@ -24,6 +25,7 @@ export const NODE_KINDS: readonly NodeKind[] = [
   "domain",
   "service",
   "endpoint",
+  "function",
   "job",
   "database",
   "table",

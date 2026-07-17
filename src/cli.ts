@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * chorograph CLI — render a system definition into a shareable map.
+ * chorograph CLI — render the architecture declared inside a codebase.
  *
- *   chorograph render <system.ts>    definition → .chorograph/graph.json + report.html (default)
- *   chorograph serve <system.ts>     watch the definition and serve the report with live rebuild
+ *   chorograph render <paths…>    load source files → .chorograph/graph.json + report.html (default)
+ *   chorograph serve <paths…>     serve the report; re-imports the code on every refresh
  *
- * Flags: --out <dir>  --json  --no-open  --port <n>  --quiet
+ * Paths are files or directories (directories are walked for source files, skipping
+ * node_modules/dist/tests). Flags: --out <dir>  --json  --no-open  --port <n>  --quiet
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Graph } from "./core/model.ts";
-import { loadSystem } from "./load.ts";
+import { loadGraph } from "./load.ts";
 import { generateReport } from "./report.ts";
 import { serve } from "./serve.ts";
 
@@ -29,7 +29,7 @@ function version(): string {
 
 interface Args {
   readonly command: "render" | "serve";
-  readonly file: string;
+  readonly paths: readonly string[];
   readonly out: string;
   readonly json: boolean;
   readonly open: boolean;
@@ -38,11 +38,13 @@ interface Args {
 }
 
 const USAGE = `usage:
-  chorograph render <system.ts>   write graph.json + report.html and open it
-  chorograph serve <system.ts>    watch the definition, serve with live rebuild
+  chorograph render <paths…>   load declarations → graph.json + report.html, open it
+  chorograph serve <paths…>    serve the report, re-importing the code on every refresh
+
+paths are source files or directories (walked recursively, skipping node_modules/dist/tests)
 
 flags:
-  --out <dir>   output directory (default: .chorograph next to the definition)
+  --out <dir>   output directory (default: .chorograph next to the first path)
   --json        write graph.json only, print meta to stdout
   --no-open     don't open the report in a browser
   --port <n>    port for serve (default: 4123)
@@ -54,7 +56,7 @@ function parseArgs(argv: readonly string[]): Args {
   let command: Args["command"] = "render";
   if (rest[0] === "render" || rest[0] === "serve") command = rest.shift() as Args["command"];
 
-  let file = "";
+  const paths: string[] = [];
   let out = "";
   let json = false;
   let open = true;
@@ -70,33 +72,37 @@ function parseArgs(argv: readonly string[]): Args {
     else if (a === "--help" || a === "-h") {
       process.stdout.write(USAGE);
       process.exit(0);
-    } else if (a !== undefined && !a.startsWith("-") && !file) file = a;
+    } else if (a !== undefined && !a.startsWith("-")) paths.push(a);
   }
-  if (!file) {
+  if (paths.length === 0) {
     process.stderr.write(USAGE);
     process.exit(1);
   }
-  return { command, file, out, json, open, port, quiet };
+  return { command, paths, out, json, open, port, quiet };
 }
 
 const abs = (p: string): string => (isAbsolute(p) ? p : resolve(process.cwd(), p));
 
-export async function buildGraph(file: string): Promise<Graph> {
-  const system = await loadSystem(file);
-  return system.toGraph({ version: version() });
+/** `.chorograph` next to the first path (its directory when the path is a file). */
+function defaultOutDir(firstPath: string): string {
+  const full = abs(firstPath);
+  const base = statSync(full).isDirectory() ? full : dirname(full);
+  return join(base, ".chorograph");
 }
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const file = abs(args.file);
-  if (!existsSync(file)) throw new Error(`no such file: ${file}`);
-  const outDir = args.out ? abs(args.out) : join(dirname(file), ".chorograph");
+  for (const p of args.paths) {
+    if (!existsSync(abs(p))) throw new Error(`no such file or directory: ${p}`);
+  }
+  const outDir = args.out ? abs(args.out) : defaultOutDir(args.paths[0]!);
   const log = (msg: string): void => {
     if (!args.quiet) process.stderr.write(msg + "\n");
   };
 
+  const fallbackName = basename(abs(args.paths[0]!)).replace(/\.[^.]+$/, "");
   const t0 = Date.now();
-  const graph = await buildGraph(file);
+  const graph = await loadGraph(args.paths, { version: version(), fallbackName });
   const nodeTotal = Object.values(graph.meta.counts.nodes).reduce((a, b) => a + b, 0);
   const edgeTotal = Object.values(graph.meta.counts.edges).reduce((a, b) => a + b, 0);
   log(`chorograph ${version()} · ${graph.meta.name}`);
@@ -118,7 +124,7 @@ async function main(): Promise<void> {
   log(`  → ${reportPath}`);
 
   if (args.command === "serve") {
-    await serve({ file, port: args.port, version: version(), log });
+    await serve({ paths: args.paths, fallbackName, port: args.port, version: version(), log });
     return;
   }
   if (args.open) openInBrowser(reportPath);

@@ -1,22 +1,38 @@
 /**
  * chorograph public API.
  *
- * Author a map with {@link defineSystem}, export it as the default export of a TypeScript file,
- * and render it with `chorograph render <file>`. The serialisable {@link Graph} contract is
- * exported for anyone piping `graph.json` into their own tooling.
+ * Declare architecture inside the real code — wrappers for function-style modules, decorators for
+ * class-style ones — then render the map with `chorograph render <paths…>`. The serialisable
+ * {@link Graph} contract is exported for anyone piping `graph.json` into their own tooling.
  */
-export { defineSystem, isSystem } from "./core/define.ts";
+export {
+  system,
+  domain,
+  service,
+  database,
+  cache,
+  bucket,
+  queue,
+  event,
+  external,
+  endpoint,
+  func,
+  job,
+  archRef,
+} from "./core/declare.ts";
 export type {
-  System,
-  SystemBuilder,
-  SystemOptions,
-  ContainerApi,
   NodeRef,
-  NodeOptions,
+  EventRef,
+  ArchFn,
+  EdgeSpec,
+  EdgeOptions,
+  DeclareOptions,
   DomainHandle,
   ServiceHandle,
+  ServiceClassHandle,
+  ServiceDecoratorOptions,
   DatabaseHandle,
-  EventHandle,
-} from "./core/define.ts";
+} from "./core/declare.ts";
+export { collectGraph, resetRegistry } from "./core/registry.ts";
 export { NODE_KINDS, EDGE_KINDS } from "./core/model.ts";
-export type { Graph, GraphMeta, Node, Edge, NodeKind, EdgeKind } from "./core/model.ts";
+export type { Graph, GraphMeta, Node, Edge, NodeKind, EdgeKind, NodeOptions } from "./core/model.ts";
