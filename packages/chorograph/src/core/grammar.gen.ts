@@ -15,6 +15,7 @@ export default {
       "contains": [
         "domain",
         "service",
+        "module",
         "database",
         "cache",
         "bucket",
@@ -31,6 +32,7 @@ export default {
       ],
       "doc": "a deployable process: API server, worker, consumer",
       "contains": [
+        "module",
         "endpoint",
         "function",
         "job",
@@ -38,6 +40,19 @@ export default {
         "cache",
         "bucket",
         "queue"
+      ],
+      "requiresParent": false
+    },
+    {
+      "kind": "module",
+      "tags": [
+        "module"
+      ],
+      "doc": "a code grouping that is not deployable on its own: a package, library, or class that organizes functions",
+      "contains": [
+        "module",
+        "function",
+        "job"
       ],
       "requiresParent": false
     },

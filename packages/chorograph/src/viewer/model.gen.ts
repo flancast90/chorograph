@@ -10,6 +10,7 @@
 export type NodeKind =
   | "domain"
   | "service"
+  | "module"
   | "endpoint"
   | "function"
   | "job"

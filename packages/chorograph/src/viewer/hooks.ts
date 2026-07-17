@@ -40,7 +40,6 @@ export function useCamera() {
       if (e.button !== 0 && e.button !== 1) return;
       const t = e.target as HTMLElement;
       if (t.closest("[data-ui]")) return; // panels own their own pointer events
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       dragging.current = { px: e.clientX, py: e.clientY, cx: camera.x, cy: camera.y };
     },
     [camera.x, camera.y],
@@ -49,6 +48,11 @@ export function useCamera() {
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const d = dragging.current;
     if (!d) return;
+    // Capture only once a real drag starts. Capturing on pointerdown retargets pointerup to the
+    // wrapper, which swallows the click that selects a node.
+    if (Math.abs(e.clientX - d.px) + Math.abs(e.clientY - d.py) > 4) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
     setCamera((c) => ({ ...c, x: d.cx + (e.clientX - d.px), y: d.cy + (e.clientY - d.py) }));
   }, []);
 

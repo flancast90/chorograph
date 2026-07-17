@@ -36,6 +36,7 @@ export async function placeOrder(items: OrderItem[]): Promise<Order> { … }
 | `@system Name` | the map's title | once per codebase; prose = system description |
 | `@domain Name` | a bounded context | `in:Parent` to nest domains |
 | `@service name` | a deployable process | `in:Domain` · sets the file's service context |
+| `@module [name]` | a code grouping: package, library, class | not deployable; name defaults to the documented class |
 | `@endpoint POST /orders` | an API surface | name it after the route |
 | `@fn [name]` | a significant function | name defaults to the documented function |
 | `@job [name]` | scheduled/background work | name defaults to the documented function |
@@ -56,8 +57,9 @@ Containment nests as deep as the design does, governed by one matrix:
 
 | container | can hold |
 | --- | --- |
-| domain | domains, services, databases, caches, buckets, queues, events, externals |
-| service | endpoints, functions, jobs, and its private databases/caches/buckets/queues |
+| domain | domains, services, modules, databases, caches, buckets, queues, events, externals |
+| service | modules, endpoints, functions, jobs, and its private databases/caches/buckets/queues |
+| module | modules, functions, jobs |
 | endpoint | endpoints (resource groups), functions |
 | function | functions |
 | job | functions |
@@ -68,12 +70,15 @@ How a node finds its parent, in precedence order:
 1. **An explicit `in:`/`of:` key**: a name (`of:api-gateway`) or dotted path when the name isn't
    unique (`of:orders.post-orders`). Case decides ties: `in:Identity` is the domain, `identity`
    the service.
-2. **File context**: the `@service` above a member, the `@database` above a table, the `@domain`
-   above anything a domain holds. Declare the service at the top of its file and members below
-   need nothing.
+2. **File context**: the nearest preceding container that can hold the member — a `@fn` attaches
+   to the file's `@module`, else its `@endpoint`, else its `@service`; a `@table` to the file's
+   `@database`; a `@module` to the file's `@service` or `@domain` (never to another module —
+   nest modules explicitly with `in:`). Declare the container at the top of its file and members
+   below need nothing.
 3. **The file's `@of` directive**: a comment of its own, `/** @of api-gateway */`, near the top
    of a file whose parent is declared elsewhere. This is how a large service splits into
-   `routes/*.ts` files: the service is declared once, each routes file carries one `@of`.
+   `routes/*.ts` files (the service is declared once, each routes file carries one `@of`), and
+   how a package spanning many files hangs everything off one `@module`.
 
 Members (`@endpoint`, `@fn`, `@job`, `@table`) with no parent are errors. An endpoint floating
 outside any service is not architecture.
@@ -117,13 +122,18 @@ stopped doing the thing.
 6. **Keep names stable.** Renaming a node breaks every edge pointing at it; the render will list
    them; fix them in the same commit.
 
-## Granularity rubric for `@fn`
+## Granularity: two valid modes
 
-Annotate a function when it is a *load-bearing part of the design*: it owns a rule (pricing,
-fees, auth), it is the single place something happens (template rendering, password hashing), or
-it has its own architectural edges (reads a cache, calls a third party). Do **not** annotate
-helpers, mappers, or glue. A service with thirty `@fn` nodes is noise, one with three to seven
-is a map.
+**Map mode** (the default): annotate a function only when it is a *load-bearing part of the
+design* — it owns a rule (pricing, fees, auth), it is the single place something happens, or it
+has its own architectural edges. A service with three to seven `@fn` nodes is a map.
+
+**Full-coverage mode** (when the codebase decides the map should explain *everything*): every
+package and class is a `@module`, every documented function carries `@fn`, and the hierarchy —
+domain → service/module → class → function — does the organizing that keeps it readable. In
+this mode the prose matters most: say *how* the function does its job (“regex over known
+patterns”, “asks the small model”), because that's what a reviewer scans for. Follow whichever
+mode the codebase already uses.
 
 ## Verifying
 

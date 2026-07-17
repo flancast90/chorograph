@@ -177,8 +177,9 @@ export function toDto() {}
         "routes/lists.ts",
       ),
     ]);
+    // The helper declared after the endpoint nests inside it — nearest preceding container wins.
     expect(g.nodes.map((n) => n.id)).toEqual(
-      expect.arrayContaining(["gateway/get-lists", "gateway/to-dto"]),
+      expect.arrayContaining(["gateway/get-lists", "gateway/get-lists/to-dto"]),
     );
   });
 
@@ -370,5 +371,74 @@ export { s };
 `),
     ]);
     expect(g.nodes.map((n) => n.id)).toEqual(["api"]);
+  });
+});
+
+describe("modules — organizing library code", () => {
+  it("nests package → class → method, class name inferred from the declaration", () => {
+    const g = buildGraph([
+      src(`
+/**
+ * Application services, pure of I/O.
+ * @module usecases
+ */
+
+/**
+ * Postgres-backed project repository.
+ * @module in:usecases
+ */
+export class PgProjects {
+  /**
+   * Creates a project inside the tenant scope.
+   * @fn
+   */
+  create(): void {}
+}
+`),
+    ]);
+    const ids = g.nodes.map((n) => n.id);
+    expect(ids).toContain("usecases");
+    expect(ids).toContain("usecases/pg-projects");
+    expect(ids).toContain("usecases/pg-projects/create");
+  });
+
+  it("modules auto-nest under the file's service or domain context", () => {
+    const g = buildGraph([
+      src(`
+/** @domain Billing */
+/** @module shared-kit */
+/** @service api in:Billing */
+/** @module routes */
+export {};
+`),
+    ]);
+    expect(g.nodes.find((n) => n.id === "billing/shared-kit")).toBeDefined();
+    expect(g.nodes.find((n) => n.id === "billing/api/routes")).toBeDefined();
+  });
+
+  it("functions attach to the file's @endpoint before its @service", () => {
+    const g = buildGraph([
+      src(`
+/** @service api */
+/** @endpoint POST /orders */
+/**
+ * Computes totals for one order.
+ * @fn
+ */
+export function computeTotals(): void {}
+`),
+    ]);
+    expect(g.nodes.find((n) => n.id === "api/post-orders/compute-totals")).toBeDefined();
+  });
+
+  it("a file-level @of can point at a module declared elsewhere", () => {
+    const g = buildGraph([
+      src(`/** @domain Core */\n/** @module domain-kit in:Core */\nexport {};`, "index.ts"),
+      src(
+        `/** @of domain-kit */\n/**\n * Parses money without floats.\n * @fn\n */\nexport function parseMoney(): void {}`,
+        "money.ts",
+      ),
+    ]);
+    expect(g.nodes.find((n) => n.id === "core/domain-kit/parse-money")).toBeDefined();
   });
 });

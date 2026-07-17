@@ -261,6 +261,8 @@ export function buildGraph(
     const ctx: {
       domain?: PendingNode;
       service?: PendingNode;
+      module?: PendingNode;
+      endpoint?: PendingNode;
       database?: PendingNode;
       fileRef?: { text: string; file: string; line: number };
     } = {};
@@ -322,14 +324,13 @@ export function buildGraph(
 
       let name = rawName;
       if (!name) {
-        if ((kind === "function" || kind === "job") && block.symbol !== undefined) {
+        const inferable = kind === "function" || kind === "job" || kind === "module";
+        if (inferable && block.symbol !== undefined) {
           name = block.symbol;
         } else {
           errors.push(
             `${at(block.file, tag.line)}: @${tag.name} needs a name` +
-              (kind === "function" || kind === "job"
-                ? " (or put the comment on a named function so the name is inferred)"
-                : ""),
+              (inferable ? " (or put the comment on a named declaration so the name is inferred)" : ""),
           );
           continue;
         }
@@ -353,7 +354,14 @@ export function buildGraph(
       const explicit = keys.of ?? keys.in;
       const mutable = pending as { parentRef?: PendingNode["parentRef"]; ctxParent?: PendingNode };
       const ctxParentFor = (k: NodeKind): PendingNode | undefined => {
-        if (k === "endpoint" || k === "function" || k === "job") return ctx.service;
+        // Functions nest under the nearest preceding container that can hold them: the class or
+        // package's @module, the route file's @endpoint, else the file's @service.
+        if (k === "function") return ctx.module ?? ctx.endpoint ?? ctx.service;
+        if (k === "job") return ctx.module ?? ctx.service;
+        if (k === "endpoint") return ctx.service;
+        // Modules never auto-nest in a preceding module (two classes in one file would chain);
+        // nesting a module inside a module is always explicit via in:/of:.
+        if (k === "module") return ctx.service ?? ctx.domain;
         if (k === "table") return ctx.database;
         if (k === "domain") return undefined; // domains nest only explicitly
         return ctx.service && canContain("service", k) ? ctx.service : ctx.domain;
@@ -375,6 +383,8 @@ export function buildGraph(
 
       if (kind === "domain") ctx.domain = pending;
       if (kind === "service") ctx.service = pending;
+      if (kind === "module") ctx.module = pending;
+      if (kind === "endpoint") ctx.endpoint = pending;
       if (kind === "database") ctx.database = pending;
 
       for (const et of edgeTags) {

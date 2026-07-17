@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./Canvas.tsx";
-import { DetailPanel, HoverCard } from "./DetailPanel.tsx";
+import { DetailPanel } from "./DetailPanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { useCamera, useKeyboard, type ViewInsets } from "./hooks.ts";
 import { buildScene } from "./layout.ts";
@@ -175,9 +175,15 @@ export function App({ graph }: { graph: Graph }) {
         onShowEverything={() => setFilters(NO_FILTERS)}
       />
 
-      <DetailPanel graph={graph} selected={selected} onNavigate={navigateTo} onClose={() => setSelected(null)} />
-      {/* The pinned panel owns the right-hand slot; the hover preview only fills it when free. */}
-      {!selected && <HoverCard graph={graph} hovered={hovered} />}
+      {/* One card, two modes: hovering previews a node, clicking pins it. While hovering, the
+          preview temporarily replaces the pinned card; mouse-out restores it. */}
+      <DetailPanel
+        graph={graph}
+        nodeId={hovered ?? selected}
+        pinned={hovered === null && selected !== null}
+        onNavigate={navigateTo}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }

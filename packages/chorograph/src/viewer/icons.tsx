@@ -38,6 +38,14 @@ const PATHS: Record<NodeKind, React.ReactNode> = {
       <path d="M8 12.5 V14.5" {...STROKE} />
     </>
   ),
+  // Open package — code grouped in a box, lid ajar: not deployable, just organized.
+  module: (
+    <>
+      <rect x="2.5" y="5.5" width="11" height="8.5" rx="1" {...STROKE} />
+      <path d="M2.5 5.5 L4 2.5 H12 L13.5 5.5" {...STROKE} />
+      <path d="M6.5 8.5 H9.5" {...STROKE} />
+    </>
+  ),
   // ƒ — a function worth naming on the map.
   function: (
     <text

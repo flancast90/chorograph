@@ -65,6 +65,7 @@ One comment declares one node; its prose becomes the description. Edge tags in t
 | --- | --- |
 | `@system` / `@domain` | the map's title, a bounded context |
 | `@service name` | a deployable process |
+| `@module` | a code grouping: package, library, class (name inferred from the code) |
 | `@endpoint POST /orders` | an API surface |
 | `@fn` / `@job` | a significant function / background work (name inferred from the code) |
 | `@database name tables:a,b` | a database and its tables |
@@ -75,7 +76,7 @@ One comment declares one node; its prose becomes the description. Edge tags in t
 
 Edges: `@calls`, `@reads`, `@writes`, `@emits`, `@consumes`, `@uses`. Target by name, dotted when ambiguous (`orders-db.orders`).
 
-Containment nests as deep as the design does: services hold endpoints, jobs, and private infrastructure; endpoints hold the functions that implement them; functions decompose into functions. Parents come from an explicit `in:`/`of:` key, the file's context, or a file-level `@of`, which is how one service spreads across `routes/*.ts` files.
+Containment nests as deep as the design does: services hold modules, endpoints, jobs, and private infrastructure; modules hold the functions of a package or class; endpoints hold the functions that implement them; functions decompose into functions. Parents come from an explicit `in:`/`of:` key, the file's context, or a file-level `@of`, which is how one service spreads across `routes/*.ts` files — and how full-coverage maps organize every documented function in a codebase.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/detail.png" width="860" alt="The detail panel for an endpoint: what it contains, its connections in both directions, and the file and line where it was declared">
