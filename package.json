@@ -4,6 +4,15 @@
   "description": "A chorography of your codebase — map every region, module, and function, and how they actually connect.",
   "type": "module",
   "license": "MIT",
+  "author": "flancast90",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flancast90/chorograph.git"
+  },
+  "homepage": "https://github.com/flancast90/chorograph#readme",
+  "bugs": {
+    "url": "https://github.com/flancast90/chorograph/issues"
+  },
   "keywords": [
     "architecture",
     "dependency-graph",

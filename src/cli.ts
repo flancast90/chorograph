@@ -90,7 +90,7 @@ function parseArgs(argv: readonly string[]): Args {
         last.includes("/") ||
         last.includes("\\") ||
         last.startsWith("~");
-      // Prefer: `diff base head ../sales-agent` — if ≥1 refs and last looks like path, it's dir.
+      // Prefer: `diff base head path/to/repo` — if ≥1 refs and last looks like path, it's dir.
       if (positionals.length >= 1 && looksLikeDir) {
         dir = last;
         refs = positionals.slice(0, -1);
