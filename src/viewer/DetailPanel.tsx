@@ -152,8 +152,24 @@ export function DetailPanel({ graph, selected, onNavigate, onClose }: Props) {
         </Section>
       )}
 
-      <div style={{ padding: "10px 16px 14px", fontFamily: theme.fontMono, fontSize: 10, color: theme.inkFaint }}>
-        {node.id}
+      <div
+        style={{
+          padding: "10px 16px 14px",
+          fontFamily: theme.fontMono,
+          fontSize: 10,
+          color: theme.inkFaint,
+          display: "flex",
+          flexDirection: "column",
+          gap: 3,
+        }}
+      >
+        {node.file && (
+          <span style={{ wordBreak: "break-all" }}>
+            {node.file}
+            {node.line !== undefined ? `:${node.line}` : ""}
+          </span>
+        )}
+        <span>{node.id}</span>
       </div>
     </aside>
   );

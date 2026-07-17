@@ -5,8 +5,8 @@
  * services hold endpoints and jobs, databases hold tables — plus a set of directed {@link Edge}s
  * describing how those things talk to each other.
  *
- * Everything is declared explicitly, inside the real source code, with the wrappers and decorators
- * in `core/declare.ts`. chorograph never infers structure from imports or folders: the map contains
+ * Everything is declared explicitly, in doc comments on the real source code, parsed statically by
+ * `core/annotations.ts`. chorograph never infers structure from imports or folders: the map contains
  * exactly what was written down, which is what makes it trustworthy as an architecture document.
  */
 
@@ -54,15 +54,6 @@ export type EdgeKind = "calls" | "reads" | "writes" | "emits" | "consumes" | "us
 
 export const EDGE_KINDS: readonly EdgeKind[] = ["calls", "reads", "writes", "emits", "consumes", "uses"];
 
-/** Descriptive fields accepted by every declaration. */
-export interface NodeOptions {
-  /** One or two sentences on what this thing is for. Shown in the detail panel. */
-  readonly description?: string;
-  /** Implementation note: `PostgreSQL 16`, `Go`, `Kafka`. */
-  readonly tech?: string;
-  readonly tags?: readonly string[];
-}
-
 /** A single thing on the map. */
 export interface Node {
   /** Stable slug path derived from names: `commerce/orders/post-orders`. */
@@ -76,6 +67,9 @@ export interface Node {
   /** Implementation note: `PostgreSQL 16`, `Node.js`, `Kafka`. */
   readonly tech?: string;
   readonly tags: readonly string[];
+  /** Where the declaring comment lives, relative to where chorograph ran. */
+  readonly file?: string;
+  readonly line?: number;
 }
 
 /** A directed connection between two nodes. */
@@ -92,7 +86,7 @@ export interface GraphMeta {
   readonly tool: "chorograph";
   readonly version: string;
   readonly generatedAt: string;
-  /** The system name passed to `defineSystem`. */
+  /** The system name from the `@system` comment. */
   readonly name: string;
   readonly description?: string;
   readonly counts: {

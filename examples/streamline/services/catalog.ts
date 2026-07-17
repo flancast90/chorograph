@@ -1,9 +1,7 @@
 /**
- * Catalog service — owns products and prices, serves browse and search traffic.
+ * Owns products and prices. Serves browse and search traffic.
+ * @service catalog in:Catalog tech:Node.js
  */
-import { catalogDomain } from "../architecture.ts";
-import { productUpdated } from "../events.ts";
-import { priceHistoryTable, productImages, productsTable, searchCluster } from "../infra.ts";
 
 export interface Product {
   id: string;
@@ -14,42 +12,44 @@ export interface Product {
 
 const products = new Map<string, Product>();
 
-export const catalog = catalogDomain.service("catalog", {
-  description: "Owns products and prices. Serves browse and search traffic.",
-  tech: "Node.js",
-});
+/**
+ * Signs a short-lived URL for a product image.
+ * @fn
+ * @uses product-images signed URLs
+ */
+export function imageUrl(product: Product): string {
+  return `https://img.streamline.example/${product.imageKey}?sig=${product.id.slice(0, 8)}`;
+}
 
-export const imageUrl = catalog.fn(
-  "imageUrl",
-  { description: "Signs a short-lived URL for a product image.", uses: [[productImages, "signed URLs"]] },
-  (product: Product): string => `https://img.streamline.example/${product.imageKey}?sig=${product.id.slice(0, 8)}`,
-);
+/**
+ * @endpoint GET /products
+ * @reads catalog-db.products
+ * @reads search-cluster when a search query is present
+ */
+export async function listProducts(query?: string): Promise<Product[]> {
+  const all = [...products.values()];
+  if (!query) return all;
+  const q = query.toLowerCase();
+  return all.filter((p) => p.name.toLowerCase().includes(q));
+}
 
-export const listProducts = catalog.endpoint(
-  "GET /products",
-  { reads: [productsTable, [searchCluster, "search queries"]] },
-  async (query?: string): Promise<Product[]> => {
-    const all = [...products.values()];
-    if (!query) return all;
-    const q = query.toLowerCase();
-    return all.filter((p) => p.name.toLowerCase().includes(q));
-  },
-);
+/**
+ * @endpoint GET /products/:id
+ * @reads catalog-db.products
+ * @reads catalog-db.price_history for the price chart
+ */
+export async function getProduct(id: string): Promise<(Product & { imageUrl: string }) | null> {
+  const product = products.get(id);
+  return product ? { ...product, imageUrl: imageUrl(product) } : null;
+}
 
-export const getProduct = catalog.endpoint(
-  "GET /products/:id",
-  { reads: [productsTable, priceHistoryTable] },
-  async (id: string): Promise<(Product & { imageUrl: string }) | null> => {
-    const product = products.get(id);
-    return product ? { ...product, imageUrl: imageUrl(product) } : null;
-  },
-);
-
-export const upsertProduct = catalog.endpoint(
-  "PUT /products/:id",
-  { writes: [productsTable, priceHistoryTable], emits: [productUpdated] },
-  async (product: Product): Promise<Product> => {
-    products.set(product.id, product);
-    return product;
-  },
-);
+/**
+ * @endpoint PUT /products/:id
+ * @writes catalog-db.products
+ * @writes catalog-db.price_history
+ * @emits product.updated so the search index stays fresh
+ */
+export async function upsertProduct(product: Product): Promise<Product> {
+  products.set(product.id, product);
+  return product;
+}

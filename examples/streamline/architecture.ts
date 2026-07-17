@@ -1,33 +1,46 @@
 /**
- * System-wide architecture anchors: the map's name, the domains, and the third parties.
- *
- * Everything else is declared next to the code it describes — see `infra.ts`, `events.ts`, and
- * `services/*`. Render the whole map with:
- *
- *   pnpm chorograph render examples/streamline
+ * Fictional e-commerce platform: storefront traffic in, orders and emails out.
+ * @system Streamline
  */
-import { domain, external, system } from "../../src/index.ts";
 
-system("Streamline", {
-  description: "Fictional e-commerce platform: storefront traffic in, orders and emails out.",
-});
+/**
+ * Who the user is: accounts, sessions, sign-in.
+ * @domain Identity
+ */
 
-export const identityDomain = domain("Identity", {
-  description: "Who the user is: accounts, sessions, sign-in.",
-});
+/**
+ * What we sell: products, pricing, search.
+ * @domain Catalog
+ */
 
-export const catalogDomain = domain("Catalog", {
-  description: "What we sell: products, pricing, search.",
-});
+/**
+ * The money path: checkout, payment, fulfilment.
+ * @domain Orders
+ */
 
-export const ordersDomain = domain("Orders", {
-  description: "The money path: checkout, payment, fulfilment.",
-});
+/**
+ * Everything we send to the customer.
+ * @domain Notifications
+ */
 
-export const notificationsDomain = domain("Notifications", {
-  description: "Everything we send to the customer.",
-});
+/**
+ * Payment processing.
+ * @external Stripe in:Orders
+ */
 
-export const stripe = external("Stripe", { description: "Payment processing." });
-export const sendgrid = external("SendGrid", { description: "Transactional email." });
-export const twilio = external("Twilio", { description: "SMS for shipping updates." });
+/**
+ * Transactional email.
+ * @external SendGrid in:Notifications
+ */
+
+/**
+ * SMS for shipping updates.
+ * @external Twilio in:Notifications
+ */
+
+// This file only anchors the map: the system, its domains, and the third parties.
+// Everything else is annotated next to the code it describes — see infra.ts, events.ts,
+// and services/*. Render the whole map with:
+//
+//   pnpm chorograph render examples/streamline
+export {};

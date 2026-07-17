@@ -1,12 +1,8 @@
 /**
- * Identity service — function-style declarations. Each endpoint wrapper returns the handler
- * unchanged, so this module exports plain async functions that the router (or tests) call
- * directly; the architecture is a side effect of the same lines that define the code.
+ * Owns accounts and sessions. Issues and validates access tokens.
+ * @service identity in:Identity tech:"Node.js + Fastify"
  */
 import { randomUUID, scryptSync } from "node:crypto";
-import { identityDomain } from "../architecture.ts";
-import { userSignedUp } from "../events.ts";
-import { sessionCache, sessionsTable, usersTable } from "../infra.ts";
 
 interface User {
   id: string;
@@ -24,47 +20,47 @@ interface Session {
 const users = new Map<string, User>();
 const sessions = new Map<string, Session>();
 
-export const identity = identityDomain.service("identity", {
-  description: "Owns accounts and sessions. Issues and validates access tokens.",
-  tech: "Node.js + Fastify",
-});
+/**
+ * scrypt with a per-user salt; the only place passwords are touched.
+ * @fn
+ */
+export function hashPassword(password: string, salt: string): string {
+  return scryptSync(password, salt, 32).toString("hex");
+}
 
-export const hashPassword = identity.fn(
-  "hashPassword",
-  { description: "scrypt with a per-user salt; the only place passwords are touched." },
-  (password: string, salt: string): string => scryptSync(password, salt, 32).toString("hex"),
-);
+/**
+ * @endpoint POST /signup
+ * @writes identity-db.users
+ * @emits user.signed-up so notifications can send the welcome email
+ */
+export async function signup(email: string, password: string): Promise<{ userId: string }> {
+  if (!email.includes("@")) throw new Error("invalid email");
+  if ([...users.values()].some((u) => u.email === email)) throw new Error("email already registered");
+  const user: User = { id: randomUUID(), email, passwordHash: hashPassword(password, email) };
+  users.set(user.id, user);
+  return { userId: user.id };
+}
 
-export const signup = identity.endpoint(
-  "POST /signup",
-  { writes: [usersTable], emits: [userSignedUp] },
-  async (email: string, password: string): Promise<{ userId: string }> => {
-    if (!email.includes("@")) throw new Error("invalid email");
-    if ([...users.values()].some((u) => u.email === email)) throw new Error("email already registered");
-    const user: User = { id: randomUUID(), email, passwordHash: hashPassword(password, email) };
-    users.set(user.id, user);
-    return { userId: user.id };
-  },
-);
+/**
+ * @endpoint POST /token
+ * @reads identity-db.users
+ * @writes identity-db.sessions
+ * @writes session-cache so verification is cache-first
+ */
+export async function issueToken(email: string, password: string): Promise<{ token: string }> {
+  const user = [...users.values()].find((u) => u.email === email);
+  if (!user || user.passwordHash !== hashPassword(password, email)) throw new Error("bad credentials");
+  const session: Session = { token: randomUUID(), userId: user.id, expiresAt: Date.now() + 86_400_000 };
+  sessions.set(session.token, session);
+  return { token: session.token };
+}
 
-export const issueToken = identity.endpoint(
-  "POST /token",
-  { reads: [usersTable], writes: [sessionsTable, sessionCache] },
-  async (email: string, password: string): Promise<{ token: string }> => {
-    const user = [...users.values()].find((u) => u.email === email);
-    if (!user || user.passwordHash !== hashPassword(password, email)) throw new Error("bad credentials");
-    const session: Session = { token: randomUUID(), userId: user.id, expiresAt: Date.now() + 86_400_000 };
-    sessions.set(session.token, session);
-    return { token: session.token };
-  },
-);
-
-export const verifyToken = identity.endpoint(
-  "GET /token/verify",
-  { reads: [sessionCache] },
-  async (token: string): Promise<{ userId: string } | null> => {
-    const session = sessions.get(token);
-    if (!session || session.expiresAt < Date.now()) return null;
-    return { userId: session.userId };
-  },
-);
+/**
+ * @endpoint GET /token/verify
+ * @reads session-cache
+ */
+export async function verifyToken(token: string): Promise<{ userId: string } | null> {
+  const session = sessions.get(token);
+  if (!session || session.expiresAt < Date.now()) return null;
+  return { userId: session.userId };
+}

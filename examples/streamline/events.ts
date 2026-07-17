@@ -1,16 +1,24 @@
 /**
  * Domain events — the contracts that flow between services. Each event is declared once, in its
- * owning domain; producers point `emits` at it and consumers point `consumes` at it.
+ * owning domain; producers point `@emits` at it and consumers point `@consumes` at it. The
+ * payload types double as documentation of each contract.
  */
-import { catalogDomain, identityDomain, ordersDomain } from "./architecture.ts";
 
-export const userSignedUp = identityDomain.event("user.signed-up");
-export const productUpdated = catalogDomain.event("product.updated");
-export const orderPlaced = ordersDomain.event("order.placed");
-export const orderShipped = ordersDomain.event("order.shipped");
-export const paymentCaptured = ordersDomain.event("payment.captured");
+/** @event user.signed-up in:Identity */
+export const USER_SIGNED_UP = "user.signed-up";
 
-// Payload types double as documentation of each contract.
+/** @event product.updated in:Catalog */
+export const PRODUCT_UPDATED = "product.updated";
+
+/** @event order.placed in:Orders */
+export const ORDER_PLACED = "order.placed";
+
+/** @event order.shipped in:Orders */
+export const ORDER_SHIPPED = "order.shipped";
+
+/** @event payment.captured in:Orders */
+export const PAYMENT_CAPTURED = "payment.captured";
+
 export interface UserSignedUpPayload {
   userId: string;
   email: string;

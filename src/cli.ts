@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * chorograph CLI — render the architecture declared inside a codebase.
+ * chorograph CLI — render the architecture annotated inside a codebase's doc comments.
  *
- *   chorograph render <paths…>    load source files → .chorograph/graph.json + report.html (default)
- *   chorograph serve <paths…>     serve the report; re-imports the code on every refresh
+ *   chorograph render <paths…>    scan source files → .chorograph/graph.json + report.html (default)
+ *   chorograph serve <paths…>     serve the report; re-scans the code on every refresh
  *
  * Paths are files or directories (directories are walked for source files, skipping
  * node_modules/dist/tests). Flags: --out <dir>  --json  --no-open  --port <n>  --quiet
@@ -38,8 +38,8 @@ interface Args {
 }
 
 const USAGE = `usage:
-  chorograph render <paths…>   load declarations → graph.json + report.html, open it
-  chorograph serve <paths…>    serve the report, re-importing the code on every refresh
+  chorograph render <paths…>   scan doc comments → graph.json + report.html, open it
+  chorograph serve <paths…>    serve the report, re-scanning the code on every refresh
 
 paths are source files or directories (walked recursively, skipping node_modules/dist/tests)
 
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 
   const fallbackName = basename(abs(args.paths[0]!)).replace(/\.[^.]+$/, "");
   const t0 = Date.now();
-  const graph = await loadGraph(args.paths, { version: version(), fallbackName });
+  const graph = loadGraph(args.paths, { version: version(), fallbackName });
   const nodeTotal = Object.values(graph.meta.counts.nodes).reduce((a, b) => a + b, 0);
   const edgeTotal = Object.values(graph.meta.counts.edges).reduce((a, b) => a + b, 0);
   log(`chorograph ${version()} · ${graph.meta.name}`);

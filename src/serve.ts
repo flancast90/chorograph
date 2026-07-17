@@ -1,7 +1,7 @@
 /**
- * Dev server — re-import the annotated code and rebuild the map on every page load.
+ * Dev server — re-scan the annotated code and rebuild the map on every page load.
  *
- * Editing declarations and refreshing the browser is the whole loop; there is no cache to
+ * Editing a comment and refreshing the browser is the whole loop; there is no cache to
  * invalidate and no websocket to babysit. Errors render as a plain page instead of killing
  * the server.
  */
@@ -25,7 +25,7 @@ export async function serve(opts: ServeOptions): Promise<void> {
     void (async () => {
       const url = (req.url ?? "/").split("?")[0];
       try {
-        const graph = await loadGraph(opts.paths, { version: opts.version, fallbackName: opts.fallbackName });
+        const graph = loadGraph(opts.paths, { version: opts.version, fallbackName: opts.fallbackName });
         if (url === "/graph.json") {
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify(graph, null, 2));

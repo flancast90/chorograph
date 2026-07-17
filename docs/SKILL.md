@@ -1,113 +1,105 @@
 ---
 name: chorograph
-description: Declare software architecture inline in TypeScript code using chorograph wrappers and decorators, so the codebase always renders an accurate architecture map. Use when writing or modifying services, endpoints, jobs, databases, queues, events, or external integrations in a codebase that uses chorograph.
+description: Declare software architecture in doc comments so the codebase always renders an accurate architecture map. Use when writing or modifying services, endpoints, jobs, databases, queues, events, or external integrations in a codebase that uses chorograph.
 ---
 
 # Declaring architecture with chorograph
 
-chorograph renders an architecture map from declarations that live **inside the real code**. Your
-job when writing code in a chorograph codebase: every architecturally significant thing you create
-or change must carry its declaration. The map is generated with `chorograph render <dirs>` — it
-shows exactly what is declared, nothing else. Undeclared code is invisible; stale edges are lies.
-Both are bugs you can prevent mechanically by following this skill.
+chorograph renders an architecture map from **doc comments on the real code**. Nothing is
+imported or executed — the tags below are the entire mechanism. Your job when writing code in a
+chorograph codebase: every architecturally significant thing you create or change must carry its
+annotation, in the same comment where you'd document it anyway. The map is generated with
+`chorograph render <dirs>` — it shows exactly what is annotated, nothing else. Undeclared code is
+invisible; stale edges are lies. Both are bugs you prevent by following this skill.
 
-## The vocabulary
+## The shape of an annotation
 
-Node kinds (each container's children in parentheses):
-
-- `domain` (anything) — a bounded context: `domain("Commerce")`
-- `service` (endpoints, functions, jobs) — a deployable process
-- `endpoint` — an API surface: HTTP route, RPC method. Name it after the route: `"POST /orders"`
-- `function` — an architecturally significant function inside a service
-- `job` — scheduled or background work
-- `database` (tables), `table`, `cache`, `bucket`, `queue` — state and transport
-- `event` — a named domain event: `"order.placed"`
-- `external` — a third party you don't operate: `"Stripe"`
-
-Edge verbs — declared on the node doing the verb, always reading as a sentence:
-
-- `calls` — request/response (label with protocol: `calls: [[signup, "HTTP"]]`)
-- `reads` / `writes` — store access
-- `emits` / `consumes` — event flow (targets must be events)
-- `uses` — escape hatch; prefer a specific verb
-
-## Function-style code (preferred for plain functions)
-
-Wrap the implementation. The wrapper returns your function unchanged and stamps it with a node
-identity, so other declarations can import and point at it:
+One comment declares one node, plus that node's edges. The prose becomes the node's description;
+free text after an edge target becomes the edge's label — use it to say **why**:
 
 ```ts
-import { domain } from "chorograph";
-
-export const commerce = domain("Commerce");
-export const orders = commerce.service("orders", { tech: "Node.js" });
-export const ordersDb = commerce.database("orders-db", { tech: "PostgreSQL 16" });
-export const ordersTable = ordersDb.table("orders");
-export const orderPlaced = commerce.event("order.placed");
-
-export const placeOrder = orders.endpoint(
-  "POST /orders",
-  { writes: [ordersTable], emits: [orderPlaced] },
-  async (input: PlaceOrderInput): Promise<Order> => {
-    // real implementation — callers invoke placeOrder(...) directly
-  },
-);
-
-export const calculateTotal = orders.fn(
-  "calculateTotal",
-  { description: "Single source of truth for order arithmetic." },
-  (items: readonly OrderItem[]): number => items.reduce((s, i) => s + i.quantity * i.unitPriceCents, 0),
-);
+/**
+ * Places an order and charges it synchronously.
+ * @endpoint POST /orders
+ * @writes orders-db.orders
+ * @writes orders-db.order_items
+ * @emits order.placed so notifications and analytics can react
+ * @calls payments.post-charge charge at checkout, in-process for now
+ */
+export async function placeOrder(items: OrderItem[]): Promise<Order> { … }
 ```
 
-## Class-style code (decorators)
+## Node tags
 
-```ts
-import { service, endpoint, func, job, archRef } from "chorograph";
+| tag | declares | notes |
+| --- | --- | --- |
+| `@system Name` | the map's title | once per codebase; prose = system description |
+| `@domain Name` | a bounded context | `in:Parent` to nest domains |
+| `@service name` | a deployable process | `in:Domain` · sets the file's service context |
+| `@endpoint POST /orders` | an API surface | name it after the route |
+| `@fn [name]` | a significant function | name defaults to the documented function |
+| `@job [name]` | scheduled/background work | name defaults to the documented function |
+| `@database name` | a database | `tables:orders,order_items` declares its tables inline |
+| `@table name` | one table | `in:db-name`, or the file's `@database` context |
+| `@cache` / `@bucket` / `@queue` | Redis / S3 / SQS and friends | |
+| `@event order.placed` | a named domain event | dots in the name are fine |
+| `@external Stripe` | a third party you don't operate | |
 
-@service("payments", { domain: commerce, tech: "Node.js", description: "Only service allowed to talk to Stripe." })
-export class PaymentsService {
-  @endpoint("POST /charge", { calls: [[stripe, "create charge"]], writes: [ledgerTable], emits: [paymentCaptured] })
-  async charge(orderId: string, amountCents: number) { /* real implementation */ }
+Every node tag also accepts `tech:"PostgreSQL 16"` (quote values with spaces) and
+`tags:critical,pci`. `in:` puts a thing inside a domain; `of:` puts an endpoint/fn/job inside a
+service other than the file's own.
 
-  @job("reconcile-payments", { reads: [ledgerTable], calls: [[stripe, "list charges"]] })
-  async reconcile() { /* ... */ }
+**File context:** declaring `@service` (or `@database`, `@domain`) sets the context for the rest
+of the file — `@endpoint`/`@fn`/`@job` comments below it attach automatically. Put the `@service`
+comment at the top of the service's file. One service per file is the pattern.
 
-  @func() // name defaults to the method name
-  computeFees(amountCents: number) { /* ... */ }
-}
-```
+## Edge tags
 
-To point an edge at a decorated class from another module: `calls: [archRef(PaymentsService)]`.
+Declared in the same comment as the node doing the verb: first token is the target, everything
+after it is the label. Always phrase the label as the *why* or the protocol.
+
+| tag | meaning |
+| --- | --- |
+| `@calls target [why]` | request/response |
+| `@reads target [why]` / `@writes target [why]` | store access |
+| `@emits event [why]` / `@consumes event [why]` | event flow (target must be an @event or @queue) |
+| `@uses target [why]` | escape hatch; prefer a specific verb |
+
+**Targets are names, resolved when the map builds.** Use the bare name when it's unique
+(`session-cache`, `Stripe`, `order.placed`), or qualify with a dot when it isn't
+(`orders-db.orders`, `payments.post-charge` — endpoint names slug as `post-charge`). A target
+that matches nothing or several things fails the render with file:line and suggestions — that
+failure is the freshness check, so never silence it by deleting the edge unless the code really
+stopped doing the thing.
 
 ## Rules
 
-1. **Declare at creation.** New service, endpoint, job, table, queue, event, or third-party
-   integration ⇒ declare it in the same commit, in the same file as the code.
-2. **Edges live with the subject.** When code starts reading a table, calling a service, or
-   emitting an event, add the verb to *that* code's declaration options. When it stops, remove it.
-3. **Reference handles, never strings.** Import the handle (or wrapped function, or `archRef` of a
-   class) and point at it. If the import breaks, the edge was stale — that's the system working.
-4. **`system("Name")` exactly once** per codebase, in the architecture anchor module (where domains
-   and externals are declared).
-5. **Module top-levels must stay side-effect free.** Declarations run at import time; anything
-   else (starting servers, opening connections) belongs inside functions. Keep bootstraps behind a
-   `main()` in files you don't hand to `chorograph render`.
-6. **Names are unique within their parent** and become slug ids (`commerce/orders/post-orders`).
+1. **Annotate at creation.** New service, endpoint, job, table, queue, event, or third-party
+   integration ⇒ its comment lands in the same commit, on the same code.
+2. **Edges live with the actor.** When code starts reading a table, calling a service, or
+   emitting an event, add the tag to *that* code's comment. When it stops, remove the tag.
+3. **Prose first, tags after.** The sentence above the tags is the description shown in the map's
+   detail panel — write it for the next engineer.
+4. **`@system` exactly once**, in an architecture anchor file alongside `@domain` and `@external`
+   declarations (free-standing comments with no code attached are fine).
+5. **Names are unique within their parent** and become slug ids (`orders/orders/post-orders`).
+6. **Keep names stable.** Renaming a node breaks every edge pointing at it — the render will list
+   them; fix them in the same commit.
 
-## Granularity rubric for `fn`
+## Granularity rubric for `@fn`
 
-Declare a `function` node when a function is a *load-bearing part of the design*: it owns a rule
-(pricing, fees, auth), it is the single place something happens (template rendering, password
-hashing), or it has its own architectural edges (reads a cache, calls a third party). Do **not**
-declare helpers, mappers, or glue — a service with thirty `fn` nodes is noise, one with three to
-seven is a map.
+Annotate a function when it is a *load-bearing part of the design*: it owns a rule (pricing,
+fees, auth), it is the single place something happens (template rendering, password hashing), or
+it has its own architectural edges (reads a cache, calls a third party). Do **not** annotate
+helpers, mappers, or glue — a service with thirty `@fn` nodes is noise, one with three to seven
+is a map.
 
 ## Verifying
 
 ```bash
-npx chorograph render <dirs…> --json --quiet   # builds the map, errors on broken declarations
+npx chorograph render <dirs…> --json --quiet   # builds the map, errors on broken annotations
 ```
 
-Run it after changing declarations. Duplicate names, self-edges, non-event `emits`/`consumes`
-targets, and decorated members without a `@service` class all fail with precise messages.
+Run it after changing annotations. Dangling targets, ambiguous targets, duplicate names,
+members with no service in scope, and non-event `@emits`/`@consumes` targets all fail with
+`file:line` and suggestions.

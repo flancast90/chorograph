@@ -1,12 +1,7 @@
 /**
- * Payments service — class-style declarations with decorators, for codebases organised around
- * classes. `@service` claims the decorated members and stamps the class itself as a node, so
- * other modules can point edges at it via `archRef(PaymentsService)`.
+ * Wraps the payment provider; the only service allowed to talk to Stripe.
+ * @service payments in:Orders tech:Node.js
  */
-import { endpoint, func, job, service } from "../../../src/index.ts";
-import { ordersDomain, stripe } from "../architecture.ts";
-import { paymentCaptured } from "../events.ts";
-import { paymentLedgerTable } from "../infra.ts";
 
 interface LedgerEntry {
   orderId: string;
@@ -17,13 +12,13 @@ interface LedgerEntry {
 
 const ledger: LedgerEntry[] = [];
 
-@service("payments", {
-  domain: ordersDomain,
-  description: "Wraps the payment provider; the only service allowed to talk to Stripe.",
-  tech: "Node.js",
-})
 export class PaymentsService {
-  @endpoint("POST /charge", { calls: [[stripe, "create charge"]], writes: [paymentLedgerTable], emits: [paymentCaptured] })
+  /**
+   * @endpoint POST /charge
+   * @calls Stripe create charge
+   * @writes orders-db.payment_ledger
+   * @emits payment.captured
+   */
   async charge(orderId: string, amountCents: number): Promise<LedgerEntry> {
     if (amountCents <= 0) throw new Error("amount must be positive");
     const entry: LedgerEntry = {
@@ -36,18 +31,22 @@ export class PaymentsService {
     return entry;
   }
 
-  @job("reconcile-payments", {
-    description: "Nightly. Compares our ledger against Stripe and records drift.",
-    reads: [paymentLedgerTable],
-    calls: [[stripe, "list charges"]],
-  })
+  /**
+   * Nightly. Compares our ledger against Stripe and records drift.
+   * @job reconcile-payments
+   * @reads orders-db.payment_ledger
+   * @calls Stripe list charges
+   */
   async reconcile(): Promise<{ checked: number; drift: number }> {
     const checked = ledger.length;
     const drift = ledger.filter((e) => e.feeCents !== this.computeFees(e.amountCents)).length;
     return { checked, drift };
   }
 
-  @func("computeFees", { description: "Stripe's 2.9% + 30¢, mirrored so reconciliation can detect drift." })
+  /**
+   * Stripe's 2.9% + 30¢, mirrored so reconciliation can detect drift.
+   * @fn
+   */
   computeFees(amountCents: number): number {
     return Math.round(amountCents * 0.029) + 30;
   }

@@ -4,20 +4,25 @@ The map is the product. It has to feel like a technical drawing a staff engineer
 their desk — not a generated infographic. Two rules govern everything: **earn every pixel**, and
 **say exactly what was declared, nothing more**.
 
-## Declared, not scanned — and declared *in the code*
+## Declared, not inferred — and declared *in the doc comment*
 
-chorograph refuses to guess. There is no import scanning, no folder heuristics, no annotation
-grammar hidden in comments. Architecture is declared with wrappers and decorators that live in the
-same lines as the implementation, and the map renders exactly those nodes and edges. This is a
-design principle, not just an implementation choice:
+chorograph refuses to guess. There is no import scanning and no folder heuristics. Architecture
+is declared in the doc comment on the code it describes — the one place that already gets updated
+with the code and can carry intent (“emits order.placed *so notifications can react*”) that no
+scanner could infer. The code itself is never touched: no imports, no wrappers, nothing executed.
+This is a design principle, not just an implementation choice:
 
-- **Trust.** A reader can act on the map because someone asserted every line on it.
-- **Freshness.** The declaration wraps the real function: delete the code and the node goes with
-  it; edges are imports of real handles, so a stale edge is a compile error, not a lie on the map.
+- **Trust.** A reader can act on the map because someone asserted every line on it — including
+  the *why* on each edge.
+- **Freshness.** Every edge target must resolve to exactly one declared node, or the render fails
+  with file:line — renames and deletions surface as errors, not as lies on the map. `@fn` names
+  follow the function they document automatically.
+- **Zero intrusion.** Annotations are comments, so they work on any code — classes, free
+  functions, config objects — with no side-effect rules, no runtime cost, and nothing to import.
 - **Vocabulary.** Because nodes are declared, the kind set can stay small and closed — twelve
   kinds, six verbs — and every kind can afford its own icon and hue.
-- **Reviewability.** Declarations are code; architecture changes show up in the same diff as the
-  implementation, reviewed like everything else.
+- **Reviewability.** Annotations are part of the diff; architecture changes are reviewed in the
+  same pull request as the implementation.
 
 ## Everything visible, always
 

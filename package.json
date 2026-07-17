@@ -1,7 +1,7 @@
 {
   "name": "chorograph",
   "version": "0.2.0",
-  "description": "Architecture as code — declare your services, databases, events, and how they connect; get a clear, shareable map.",
+  "description": "Architecture in doc comments — annotate your services, databases, and events where they live; get a clear, shareable map. No imports, no config, nothing executed.",
   "type": "module",
   "license": "MIT",
   "author": "flancast90",
@@ -50,17 +50,17 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "esbuild": "^0.24.2"
+    "typescript": "^5.7.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "elkjs": "^0.9.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
 }

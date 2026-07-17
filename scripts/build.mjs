@@ -13,8 +13,9 @@ const dist = join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, "report"), { recursive: true });
 
-// Node entrypoints: bundle app code; esbuild stays external (it is the one runtime dependency,
-// used to load user definition files).
+// Node entrypoints: bundle app code. typescript (the parser, the one runtime dependency) stays
+// external; esbuild too — report.ts only dynamic-imports it on the dev path, never when the
+// prebuilt dist/viewer.js ships alongside.
 await build({
   entryPoints: [join(root, "src/cli.ts"), join(root, "src/index.ts")],
   outdir: dist,
@@ -22,7 +23,7 @@ await build({
   platform: "node",
   format: "esm",
   target: "node18",
-  external: ["esbuild"],
+  external: ["typescript", "esbuild"],
   logLevel: "info",
 });
 
@@ -42,10 +43,10 @@ await build({
 
 cpSync(join(root, "src/report/template.html"), join(dist, "report/template.html"));
 
-// Type declarations for the public API (`import { defineSystem } from "chorograph"`).
+// Type declarations for the public API (`import { buildGraph } from "chorograph"`).
 execSync("npx tsc -p tsconfig.build.json", { cwd: root, stdio: "inherit" });
 // Source uses explicit `.ts` specifiers (allowImportingTsExtensions); consumers need `.js`.
-for (const f of ["index.d.ts", "core/declare.d.ts", "core/registry.d.ts", "core/model.d.ts"]) {
+for (const f of ["index.d.ts", "load.d.ts", "core/annotations.d.ts", "core/model.d.ts"]) {
   const p = join(dist, f);
   writeFileSync(p, readFileSync(p, "utf8").replaceAll('.ts"', '.js"'));
 }

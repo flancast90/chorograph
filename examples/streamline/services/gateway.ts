@@ -1,33 +1,23 @@
 /**
- * API gateway — the public entry point. Its edges point at the endpoints it routes to, so the
- * map shows exactly which surfaces are reachable from outside.
+ * Public entry point. Terminates TLS, authenticates requests, and routes to the owning service.
+ * @service api-gateway tech:"Envoy + Node.js"
+ * @calls identity.post-signup HTTP
+ * @calls identity.post-token HTTP
+ * @calls identity.get-token-verify HTTP
+ * @calls catalog.get-products HTTP
+ * @calls catalog.get-products-id HTTP
+ * @calls orders.post-orders HTTP
+ * @calls orders.get-orders-id HTTP
+ * @calls orders.post-orders-id-ship HTTP
  */
-import { service } from "../../../src/index.ts";
-import { sessionCache } from "../infra.ts";
-import { getProduct, listProducts } from "./catalog.ts";
-import { issueToken, signup, verifyToken } from "./identity.ts";
-import { getOrder, placeOrder, shipOrder } from "./orders.ts";
+import { verifyToken } from "./identity.ts";
 
-export const gateway = service("api-gateway", {
-  description: "Public entry point. Terminates TLS, authenticates requests, and routes to the owning service.",
-  tech: "Envoy + Node.js",
-  calls: [
-    [signup, "HTTP"],
-    [issueToken, "HTTP"],
-    [verifyToken, "HTTP"],
-    [listProducts, "HTTP"],
-    [getProduct, "HTTP"],
-    [placeOrder, "HTTP"],
-    [getOrder, "HTTP"],
-    [shipOrder, "HTTP"],
-  ],
-});
-
-export const authenticate = gateway.fn(
-  "authenticate",
-  { description: "Session check on every request; cache-first.", reads: [sessionCache] },
-  async (token: string | undefined): Promise<{ userId: string } | null> => {
-    if (!token) return null;
-    return verifyToken(token);
-  },
-);
+/**
+ * Session check on every request; cache-first.
+ * @fn
+ * @reads session-cache
+ */
+export async function authenticate(token: string | undefined): Promise<{ userId: string } | null> {
+  if (!token) return null;
+  return verifyToken(token);
+}

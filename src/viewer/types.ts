@@ -46,6 +46,8 @@ export interface Node {
   readonly description?: string;
   readonly tech?: string;
   readonly tags: readonly string[];
+  readonly file?: string;
+  readonly line?: number;
 }
 
 export interface Edge {

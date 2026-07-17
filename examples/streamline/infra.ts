@@ -1,36 +1,38 @@
 /**
- * Datastores and transport infrastructure, declared where a real codebase would configure them.
- * The handles exported here are what services point their `reads`/`writes` edges at.
+ * Datastores and transport infrastructure, annotated where a real codebase would configure them.
+ * The `tables:` shorthand declares a database and its tables in one line; anything with its own
+ * story (like the session cache) gets its own comment.
  */
-import { catalogDomain, identityDomain, notificationsDomain, ordersDomain } from "./architecture.ts";
 
-// ── Identity ──────────────────────────────────────────────────────────────
-export const identityDb = identityDomain.database("identity-db", { tech: "PostgreSQL 16" });
-export const usersTable = identityDb.table("users");
-export const sessionsTable = identityDb.table("sessions");
+interface Pool {
+  query(sql: string, params?: unknown[]): Promise<unknown[]>;
+}
 
-export const sessionCache = identityDomain.cache("session-cache", {
-  description: "Hot session lookups so token validation never hits Postgres.",
-  tech: "Redis",
-});
+const pool = (url: string): Pool => ({ query: async () => [void url] });
 
-// ── Catalog ───────────────────────────────────────────────────────────────
-export const catalogDb = catalogDomain.database("catalog-db", { tech: "PostgreSQL 16" });
-export const productsTable = catalogDb.table("products");
-export const priceHistoryTable = catalogDb.table("price_history");
+/** @database identity-db in:Identity tech:"PostgreSQL 16" tables:users,sessions */
+export const identityDb = pool("postgres://identity");
 
-export const searchCluster = catalogDomain.database("search-cluster", {
-  description: "Full-text product search. Rebuilt from catalog-db, safe to lose.",
-  tech: "OpenSearch",
-});
+/**
+ * Hot session lookups so token validation never hits Postgres.
+ * @cache session-cache in:Identity tech:Redis
+ */
+export const sessionCache = new Map<string, string>();
 
-export const productImages = catalogDomain.bucket("product-images", { tech: "S3" });
+/** @database catalog-db in:Catalog tech:"PostgreSQL 16" tables:products,price_history */
+export const catalogDb = pool("postgres://catalog");
 
-// ── Orders ────────────────────────────────────────────────────────────────
-export const ordersDb = ordersDomain.database("orders-db", { tech: "PostgreSQL 16" });
-export const ordersTable = ordersDb.table("orders");
-export const orderItemsTable = ordersDb.table("order_items");
-export const paymentLedgerTable = ordersDb.table("payment_ledger");
+/**
+ * Full-text product search. Rebuilt from catalog-db, safe to lose.
+ * @database search-cluster in:Catalog tech:OpenSearch
+ */
+export const searchCluster = pool("opensearch://search");
 
-// ── Notifications ──────────────────────────────────────────────────────────
-export const emailQueue = notificationsDomain.queue("email-queue", { tech: "SQS" });
+/** @bucket product-images in:Catalog tech:S3 */
+export const productImages = { bucket: "streamline-product-images" };
+
+/** @database orders-db in:Orders tech:"PostgreSQL 16" tables:orders,order_items,payment_ledger */
+export const ordersDb = pool("postgres://orders");
+
+/** @queue email-queue in:Notifications tech:SQS */
+export const emailQueue: string[] = [];
