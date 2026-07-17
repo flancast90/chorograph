@@ -43,6 +43,7 @@
   "scripts": {
     "chorograph": "tsx src/cli.ts",
     "build": "node scripts/build.mjs",
+    "prepare": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint ."
