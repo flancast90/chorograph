@@ -85,7 +85,13 @@ In the viewer, everything is always visible and the layout is deterministic. The
 
 ## For coding agents
 
-Drop [`docs/SKILL.md`](docs/SKILL.md) into your skills directory (Cursor, Claude Code, and similar) and agents writing code in your codebase keep the map current as a side effect of normal documentation.
+There's an [agent skill](skills/chorograph/SKILL.md) that teaches agents the grammar, so the map stays current as a side effect of normal documentation. Install it into your own project with the [skills CLI](https://skills.sh):
+
+```bash
+npx skills add flancast90/Chorograph
+```
+
+Anyone cloning this repo gets it automatically: the skill is committed under `.agents/skills/` and `.claude/skills/`, where Cursor, Claude Code, and friends pick it up.
 
 ## Contributing
 

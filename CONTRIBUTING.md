@@ -30,7 +30,8 @@ examples/streamline` and refresh the browser; the scan re-runs on every request)
 | `src/cli.ts`, `src/serve.ts`, `src/report.ts` | the CLI, the dev server, HTML report generation |
 | `src/viewer/` | the React viewer bundled into every report |
 | `examples/streamline/` | the reference annotated codebase, used for manual testing |
-| `docs/` | the agent skill, design principles, README assets |
+| `skills/chorograph/` | the agent skill, installable via `npx skills add flancast90/Chorograph` (symlinked into `.agents/` and `.claude/` so cloners get it too) |
+| `docs/` | design principles, README assets |
 | `scripts/build.mjs` | builds `dist/` for publishing |
 
 Two invariants worth knowing before you edit:
@@ -63,7 +64,7 @@ time. Hold new errors to that bar, and add a test asserting the message.
 
 **The grammar grows reluctantly.** Every tag and key is something users must learn and agents
 must be taught, so the bias is strongly toward zero new surface. If a new tag is genuinely
-warranted, the same PR updates `docs/SKILL.md`, the README grammar table, and the tests.
+warranted, the same PR updates `skills/chorograph/SKILL.md`, the README grammar table, and the tests.
 
 **Tests describe behaviour, not implementation.** The suite is organised by what a user would
 observe ("nests functions inside endpoints", "rejects targets that match nothing, with

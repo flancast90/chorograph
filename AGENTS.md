@@ -25,7 +25,7 @@ There is no lint step; typecheck and tests are the gate. Match the style of the 
   regex over raw text), tag parsing, the containment matrix (`CONTAINS`), parent resolution,
   edge-target resolution, error accumulation. Most changes land here.
 - `src/core/model.ts`: the serialisable `Graph` contract. Changing it means also changing
-  `src/viewer/types.ts` (see invariants) and usually `docs/SKILL.md` + README.
+  `src/viewer/types.ts` (see invariants) and usually `skills/chorograph/SKILL.md` + README.
 - `src/load.ts`: path expansion and file reading. Skips `node_modules`, `dist`, dotfiles, tests.
 - `src/cli.ts` / `src/serve.ts` / `src/report.ts`: thin shells around `loadGraph`.
 - `src/viewer/`: the React app bundled into the report. `layout.ts` (recursive ELK), `Canvas.tsx`
@@ -81,12 +81,12 @@ source.
 
 | you changed | also update |
 | --- | --- |
-| grammar (tags, keys, resolution, errors) | `docs/SKILL.md`, README grammar/hierarchy sections, `src/core/annotations.test.ts` |
+| grammar (tags, keys, resolution, errors) | `skills/chorograph/SKILL.md`, README grammar/hierarchy sections, `src/core/annotations.test.ts` |
 | `Graph` contract | `src/viewer/types.ts`, README programmatic API section |
 | viewer look or interaction | `docs/design-principles.md` if the rules changed, README viewer section, fresh screenshots in `docs/assets/` |
 | CLI flags | README CLI table, `USAGE` string in `src/cli.ts` |
 
-`docs/SKILL.md` is consumed by other agents as an authoring guide for *user* codebases. Keep it
+`skills/chorograph/SKILL.md` is consumed by other agents as an authoring guide for *user* codebases. Keep it
 about the grammar, not about developing chorograph itself. This file is the one about developing
 chorograph.
 
