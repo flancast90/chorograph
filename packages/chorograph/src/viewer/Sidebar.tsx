@@ -1,14 +1,16 @@
 /**
  * Sidebar — the map's legend and its controls, in one always-visible column.
  *
- * Nothing collapses and nothing hides behind a dropdown: every kind that exists in this system is
- * listed with its icon, its count, and a show/hide toggle. The legend *is* the filter — one list
- * to learn instead of two.
+ * Every kind that exists in this system is listed with its icon, its count, and a show/hide
+ * toggle: the legend *is* the filter, one list to learn instead of two. On big maps a Detail
+ * row offers the two ends of the fold spectrum (overview / everything); double-clicking boxes
+ * on the canvas covers everything in between. Search shows ranked results that navigate — and
+ * unfold — straight to the match.
  */
 import { forwardRef } from "react";
 import { KindIcon } from "./icons.tsx";
 import { EDGE, KIND, SIDEBAR_WIDTH, PANEL_GAP, theme } from "./theme.ts";
-import type { EdgeKind, Filters, Graph, NodeKind } from "./types.ts";
+import type { EdgeKind, Filters, Graph, Node, NodeKind } from "./types.ts";
 import { EDGE_KINDS, NODE_KINDS } from "./types.ts";
 
 interface Props {
@@ -16,14 +18,37 @@ interface Props {
   filters: Filters;
   search: string;
   matchCount: number;
+  /** Best matches, ranked; clicking one navigates (and unfolds) straight to it. */
+  results: readonly Node[];
+  /** Whether the map has anything to fold; hides the detail controls on flat maps. */
+  foldable: boolean;
+  foldedCount: number;
   onSearch: (q: string) => void;
+  onNavigate: (id: string) => void;
   onToggleNodeKind: (kind: NodeKind) => void;
   onToggleEdgeKind: (kind: EdgeKind) => void;
   onShowEverything: () => void;
+  onFoldAll: () => void;
+  onUnfoldAll: () => void;
 }
 
 export const Sidebar = forwardRef<HTMLInputElement, Props>(function Sidebar(
-  { graph, filters, search, matchCount, onSearch, onToggleNodeKind, onToggleEdgeKind, onShowEverything },
+  {
+    graph,
+    filters,
+    search,
+    matchCount,
+    results,
+    foldable,
+    foldedCount,
+    onSearch,
+    onNavigate,
+    onToggleNodeKind,
+    onToggleEdgeKind,
+    onShowEverything,
+    onFoldAll,
+    onUnfoldAll,
+  },
   searchRef,
 ) {
   const nodeKinds = NODE_KINDS.filter((k) => (graph.meta.counts.nodes[k] ?? 0) > 0);
@@ -87,7 +112,82 @@ export const Sidebar = forwardRef<HTMLInputElement, Props>(function Sidebar(
             {matchCount === 0 ? "Nothing matches — everything else is dimmed." : `${matchCount} match${matchCount === 1 ? "" : "es"} highlighted.`}
           </div>
         )}
+        {results.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 6 }}>
+            {results.map((n) => {
+              const parent = n.parent ? graph.nodes.find((p) => p.id === n.parent) : null;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => onNavigate(n.id)}
+                  title={n.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "3px 6px",
+                    margin: "0 -6px",
+                    background: "transparent",
+                    border: "none",
+                    borderRadius: theme.radius,
+                    fontSize: 12,
+                    fontFamily: theme.fontSans,
+                    color: theme.ink,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span style={{ color: KIND[n.kind].color, display: "inline-flex", flexShrink: 0 }}>
+                    <KindIcon kind={n.kind} size={12} />
+                  </span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.name}</span>
+                  {parent && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: theme.inkFaint,
+                        marginLeft: "auto",
+                        flexShrink: 0,
+                        maxWidth: 90,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {parent.name}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {foldable && (
+        <>
+          <SectionLabel>Detail · double-click a box to unfold it</SectionLabel>
+          <div style={{ display: "flex", gap: 6, padding: "0 16px 4px" }}>
+            <button
+              type="button"
+              onClick={onFoldAll}
+              aria-pressed={foldedCount > 0}
+              style={foldButtonStyle(foldedCount > 0)}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              onClick={onUnfoldAll}
+              aria-pressed={foldedCount === 0}
+              style={foldButtonStyle(foldedCount === 0)}
+            >
+              Everything
+            </button>
+          </div>
+        </>
+      )}
 
       <SectionLabel>Things · click to show or hide</SectionLabel>
       <div style={{ padding: "0 8px 10px" }}>
@@ -201,6 +301,12 @@ export const Sidebar = forwardRef<HTMLInputElement, Props>(function Sidebar(
         / search · f fit view · esc clear
         <br />
         drag to pan · scroll to zoom
+        {foldable && (
+          <>
+            <br />
+            double-click a box to unfold it
+          </>
+        )}
       </footer>
     </aside>
   );
@@ -221,6 +327,21 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+function foldButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    flex: 1,
+    padding: "6px 0",
+    background: active ? theme.accentSoft : theme.canvas,
+    color: active ? theme.accent : theme.inkMuted,
+    border: `1px solid ${active ? "transparent" : theme.border}`,
+    borderRadius: theme.radius,
+    fontSize: 11.5,
+    fontWeight: 600,
+    fontFamily: theme.fontSans,
+    cursor: "pointer",
+  };
 }
 
 function rowStyle(hidden: boolean): React.CSSProperties {

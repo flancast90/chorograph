@@ -36,12 +36,16 @@ export interface PlacedNode {
   /** Depth in the containment tree; used for paint order. */
   readonly depth: number;
   readonly isContainer: boolean;
+  /** Set when the node is a collapsed container: how many descendants are folded inside. */
+  readonly collapsedCount?: number;
 }
 
 /** A laid-out edge: an absolute polyline plus the underlying edge. */
 export interface PlacedEdge {
   readonly edge: Edge;
   readonly points: readonly { x: number; y: number }[];
+  /** Set when several hidden edges were lifted onto this one line. */
+  readonly bundled?: number;
 }
 
 export interface Scene {

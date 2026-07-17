@@ -24,17 +24,23 @@ This is a design principle, not just an implementation choice:
 - **Reviewability.** Annotations are part of the diff; architecture changes are reviewed in the
   same pull request as the implementation.
 
-## Everything visible, always
+## Everything reachable, nothing hidden by default
 
-No expand/collapse, no level-of-detail, no “drill in to find out”. Declared maps are small (tens to
-a few hundred nodes) because humans write them, so the honest presentation is the whole system at
-once, laid out deterministically. Spatial memory is the point of a map: things must stay where they
-are. Consequences:
+Small maps (up to ~150 nodes) draw everything at once — no folding, no “drill in to find out”.
+Full-coverage maps (every function of a real codebase, a thousand nodes and more) would be a mural
+at that setting, so they start folded to their top-level containers and unfold one level per
+double-click. The principle underneath is unchanged: the fold state is always visible on the map
+itself — a folded box shows its count, and every edge into a folded subtree is lifted onto the box
+(bundled with an honest “×11”), so nothing silently disappears. Consequences:
 
 - **Filters remove, search dims.** Hiding a kind re-runs layout so the map re-flows cleanly.
-  Search never moves anything; it dims non-matches so your sense of place survives.
-- **Layout is deterministic.** Same definition → same picture, every run (ELK, fixed seed). A map
-  you cannot memorise is not a map.
+  Search never moves anything; it dims non-matches (folded boxes stay lit when they contain a
+  match) and lists ranked results that navigate — and unfold — straight to the node.
+- **Folding is spatial, not modal.** Double-click the box you are looking at; there is no tree
+  widget on the side that scrolls independently of the canvas. Overview / Everything in the
+  sidebar are just the two ends of the same fold state.
+- **Layout is deterministic.** Same definition + same fold state → same picture, every run (ELK,
+  fixed seed). A map you cannot memorise is not a map.
 
 ## The look: a technical drawing
 
@@ -59,13 +65,15 @@ hints. Weight and size carry hierarchy, not colour.
 elbows, and labelled with its verb on hover. Default edges are quiet; hover/selection lights the
 relevant ones and fades the rest. Never a straight-line hairball.
 
-## Interaction: three ideas, no modes
+## Interaction: four ideas, no modes
 
 1. **The legend is the filter.** One list, always visible, doubles as show/hide. No separate
    filter UI to learn, nothing folded into dropdowns.
-2. **Hover asks “what does this touch?”**: edges light, verbs appear.
-3. **Click asks “what is this?”**: the detail panel answers in sentences, and every name in it
-   navigates.
+2. **Hover asks “what does this touch?”**: edges light, verbs appear, the detail card previews.
+3. **Click asks “what is this?”**: the same card pins; the description, the breadcrumb, and
+   every name in it navigate.
+4. **Double-click asks “what's inside?”**: a folded box unfolds one level, an open box folds
+   back to a chip.
 
 Keyboard: `/` search, `f` fit, `esc` clear. That's the whole surface. If a feature needs a
 tutorial, it doesn't ship.

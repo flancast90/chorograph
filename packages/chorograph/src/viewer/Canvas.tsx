@@ -3,8 +3,10 @@
  *
  * Three visual layers, in paint order: domain frames (thin outlines that group without shouting),
  * container cards (services and databases with a header row and a tinted child area), and leaf
- * cards (icon chip + name). Edges sit between frames and cards so lines never cross text.
- * Hovering or selecting a node lights its edges and fades the rest; nothing else moves.
+ * cards (icon chip + name; folded containers render as tinted chips with a descendant count).
+ * Edges sit between frames and cards so lines never cross text. Hovering or selecting a node
+ * lights its edges and fades the rest; nothing else moves. Double-clicking a chip unfolds it,
+ * double-clicking an open box's header folds it back.
  */
 import { Fragment, memo } from "react";
 import { KindIcon } from "./icons.tsx";
@@ -23,6 +25,8 @@ interface Props {
   searchActive: boolean;
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
+  /** Double-click: fold an open container, unfold a collapsed chip. */
+  onToggle: (id: string) => void;
 }
 
 /** Polyline → SVG path with rounded elbows. */
@@ -72,7 +76,8 @@ function previewLabel(text: string, max = 44): string {
 function EdgeLine({ pe, lit, dim }: { pe: PlacedEdge; lit: boolean; dim: boolean }) {
   const style = EDGE[pe.edge.kind];
   const d = roundedPath(pe.points);
-  const label = pe.edge.label ? previewLabel(`${style.label} · ${pe.edge.label}`) : style.label;
+  const base = pe.edge.label ? previewLabel(`${style.label} · ${pe.edge.label}`) : style.label;
+  const label = pe.bundled !== undefined ? `${base} ×${pe.bundled}` : base;
   const mid = lit ? midpoint(pe.points) : null;
   return (
     <g opacity={dim ? 0.14 : lit ? 1 : 0.75}>
@@ -105,7 +110,7 @@ function EdgeLine({ pe, lit, dim }: { pe: PlacedEdge; lit: boolean; dim: boolean
   );
 }
 
-function DomainFrame({ p, selected, onSelect, onHover }: NodeProps) {
+function DomainFrame({ p, selected, onSelect, onHover, onToggle }: NodeProps) {
   const k = KIND.domain;
   return (
     <g
@@ -143,6 +148,17 @@ function DomainFrame({ p, selected, onSelect, onHover }: NodeProps) {
       >
         {p.node.name}
       </text>
+      {/* Folding lives on the header strip only — a stray double-click in the middle of a big
+          open box should never fold it. */}
+      <rect
+        width={p.width}
+        height={GEOM.headerHeight}
+        fill="transparent"
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onToggle(p.id);
+        }}
+      />
     </g>
   );
 }
@@ -154,9 +170,10 @@ interface NodeProps {
   faded: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+  onToggle: (id: string) => void;
 }
 
-function ContainerCard({ p, selected, hovered, faded, onSelect, onHover }: NodeProps) {
+function ContainerCard({ p, selected, hovered, faded, onSelect, onHover, onToggle }: NodeProps) {
   const k = KIND[p.node.kind];
   const stroke = selected ? theme.accent : hovered ? theme.borderStrong : theme.border;
   return (
@@ -212,13 +229,25 @@ function ContainerCard({ p, selected, hovered, faded, onSelect, onHover }: NodeP
           {p.node.tech}
         </text>
       )}
+      {/* Folding lives on the header strip only — a stray double-click in the middle of a big
+          open box should never fold it. */}
+      <rect
+        width={p.width}
+        height={GEOM.headerHeight}
+        fill="transparent"
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onToggle(p.id);
+        }}
+      />
     </g>
   );
 }
 
-function LeafCard({ p, selected, hovered, faded, onSelect, onHover }: NodeProps) {
+function LeafCard({ p, selected, hovered, faded, onSelect, onHover, onToggle }: NodeProps) {
   const k = KIND[p.node.kind];
   const stroke = selected ? theme.accent : hovered ? k.color : theme.border;
+  const folded = p.collapsedCount;
   return (
     <g
       data-node
@@ -228,13 +257,24 @@ function LeafCard({ p, selected, hovered, faded, onSelect, onHover }: NodeProps)
         e.stopPropagation();
         onSelect(p.id);
       }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (folded !== undefined) onToggle(p.id);
+      }}
       onMouseEnter={() => onHover(p.id)}
       onMouseLeave={() => onHover(null)}
       style={{ cursor: "pointer" }}
     >
-      <rect width={p.width} height={p.height} rx={theme.radius} fill={theme.card} stroke={stroke} strokeWidth={selected ? 1.6 : 1} />
+      <rect
+        width={p.width}
+        height={p.height}
+        rx={theme.radius}
+        fill={folded !== undefined ? k.chip : theme.card}
+        stroke={stroke}
+        strokeWidth={selected ? 1.6 : 1}
+      />
       <g transform={`translate(8, ${(p.height - GEOM.iconChip) / 2})`}>
-        <rect width={GEOM.iconChip} height={GEOM.iconChip} rx={5} fill={k.chip} />
+        <rect width={GEOM.iconChip} height={GEOM.iconChip} rx={5} fill={folded !== undefined ? theme.card : k.chip} />
         <g transform="translate(2.5, 2.5)" color={k.color}>
           <KindIcon kind={p.node.kind} size={15} />
         </g>
@@ -243,18 +283,41 @@ function LeafCard({ p, selected, hovered, faded, onSelect, onHover }: NodeProps)
         x={8 + GEOM.iconChip + 9}
         y={p.height / 2 + 4.5}
         fontSize={12.5}
-        fontWeight={520}
+        fontWeight={folded !== undefined ? 600 : 520}
         fill={theme.ink}
         fontFamily={theme.fontSans}
         style={{ userSelect: "none" }}
       >
         {p.node.name}
       </text>
+      {folded !== undefined && (
+        <text
+          x={p.width - 9}
+          y={p.height / 2 + 4}
+          textAnchor="end"
+          fontSize={10}
+          fontFamily={theme.fontMono}
+          fill={k.color}
+          style={{ userSelect: "none" }}
+        >
+          {folded} ▸
+        </text>
+      )}
     </g>
   );
 }
 
-export const Canvas = memo(function Canvas({ scene, camera, selected, hovered, matches, searchActive, onSelect, onHover }: Props) {
+export const Canvas = memo(function Canvas({
+  scene,
+  camera,
+  selected,
+  hovered,
+  matches,
+  searchActive,
+  onSelect,
+  onHover,
+  onToggle,
+}: Props) {
   const focus = hovered ?? selected;
 
   const isLit = (pe: PlacedEdge): boolean => {
@@ -268,7 +331,7 @@ export const Canvas = memo(function Canvas({ scene, camera, selected, hovered, m
 
   const nodeFaded = (p: PlacedNode): boolean => (searchActive ? !matches.has(p.id) : false);
 
-  const common = { onSelect, onHover };
+  const common = { onSelect, onHover, onToggle };
   const litEdges = scene.edges.filter(isLit);
   const restEdges = scene.edges.filter((pe) => !isLit(pe));
 

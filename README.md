@@ -82,7 +82,7 @@ Containment nests as deep as the design does: services hold modules, endpoints, 
   <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/detail.png" width="860" alt="The detail panel for an endpoint: what it contains, its connections in both directions, and the file and line where it was declared">
 </p>
 
-In the viewer, everything is always visible and the layout is deterministic. The legend filters, hover lights up connections, click opens the detail panel with the declaring `file:line`, and `/` searches.
+In the viewer, the layout is deterministic and nothing hides silently: small maps draw everything at once, and full-coverage maps start folded to their top-level boxes — each folded box shows how much is inside, and double-clicking unfolds it one level at a time. The legend filters, hover previews a node, click pins its detail card with the declaring `file:line`, and `/` searches with results that jump (and unfold) straight to the match.
 
 ## For coding agents
 

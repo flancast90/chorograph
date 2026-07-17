@@ -1,20 +1,24 @@
 /**
- * Viewer shell — owns the little state there is: filters, search, selection, camera.
+ * Viewer shell — owns the little state there is: filters, folding, search, selection, camera.
  *
- * The scene is a pure function of (graph, filters); toggling a kind re-runs layout so the map
- * re-flows around what's left instead of leaving holes. Search never hides anything — it dims
- * non-matches, because spatial memory is the point of a map.
+ * The scene is a pure function of (graph, filters, folded); toggling anything re-runs layout so
+ * the map re-flows around what's left instead of leaving holes. Search never hides anything —
+ * it dims non-matches, because spatial memory is the point of a map. Big maps start folded to
+ * their domains; double-clicking unfolds one level at a time.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./Canvas.tsx";
 import { DetailPanel } from "./DetailPanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { useCamera, useKeyboard, type ViewInsets } from "./hooks.ts";
-import { buildScene } from "./layout.ts";
+import { buildScene, containerIds } from "./layout.ts";
 import { DETAIL_WIDTH, PANEL_GAP, SIDEBAR_WIDTH, theme } from "./theme.ts";
-import type { EdgeKind, Filters, Graph, NodeKind, Scene } from "./types.ts";
+import type { EdgeKind, Filters, Graph, Node, NodeKind, Scene } from "./types.ts";
 
 const NO_FILTERS: Filters = { hiddenNodeKinds: new Set(), hiddenEdgeKinds: new Set() };
+
+/** Maps larger than this start folded to their top-level containers. */
+const FOLD_THRESHOLD = 150;
 
 function toggle<T>(set: ReadonlySet<T>, value: T): Set<T> {
   const next = new Set(set);
@@ -23,8 +27,22 @@ function toggle<T>(set: ReadonlySet<T>, value: T): Set<T> {
   return next;
 }
 
+function depthOf(byId: ReadonlyMap<string, Node>, id: string): number {
+  let d = 0;
+  for (let cur = byId.get(id); cur?.parent; cur = byId.get(cur.parent)) d++;
+  return d;
+}
+
+/** The initial fold: big maps collapse every non-root container, small maps show everything. */
+function initialFolded(graph: Graph): Set<string> {
+  if (graph.nodes.length <= FOLD_THRESHOLD) return new Set();
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  return new Set([...containerIds(graph)].filter((id) => depthOf(byId, id) >= 1));
+}
+
 export function App({ graph }: { graph: Graph }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => initialFolded(graph));
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
@@ -34,6 +52,43 @@ export function App({ graph }: { graph: Graph }) {
   const [view, setView] = useState({ width: 1200, height: 800 });
   const { camera, onWheel, onPointerDown, onPointerMove, onPointerUp, wasDrag, fit, focusBox } = useCamera();
   const layoutGen = useRef(0);
+  /** Node to bring into view once the next layout lands (set by toggles and navigation). */
+  const pendingFocus = useRef<string | null>(null);
+
+  const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
+  const allContainers = useMemo(() => containerIds(graph), [graph]);
+
+  /** Double-click: unfold a chip (children start folded, one level at a time) or fold a container. */
+  const toggleFold = useCallback(
+    (id: string) => {
+      if (!allContainers.has(id)) return;
+      setFolded((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+          // Progressive disclosure: unfolding shows one level; child containers stay chips.
+          for (const n of graph.nodes) {
+            if (n.parent === id && allContainers.has(n.id)) next.add(n.id);
+          }
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      pendingFocus.current = id;
+    },
+    [graph, allContainers],
+  );
+
+  const foldAll = useCallback(() => {
+    setFolded(new Set([...allContainers].filter((id) => depthOf(byId, id) >= 1)));
+    pendingFocus.current = null;
+  }, [allContainers, byId]);
+
+  const unfoldAll = useCallback(() => {
+    setFolded(new Set());
+    pendingFocus.current = null;
+  }, []);
 
   const insets: ViewInsets = useMemo(
     () => ({
@@ -48,10 +103,10 @@ export function App({ graph }: { graph: Graph }) {
   // Layout is async (ELK); guard against out-of-order results.
   useEffect(() => {
     const gen = ++layoutGen.current;
-    void buildScene(graph, filters).then((s) => {
+    void buildScene(graph, filters, folded).then((s) => {
       if (gen === layoutGen.current) setScene(s);
     });
-  }, [graph, filters]);
+  }, [graph, filters, folded]);
 
   // Track viewport size.
   useEffect(() => {
@@ -66,29 +121,33 @@ export function App({ graph }: { graph: Graph }) {
     return () => ro.disconnect();
   }, []);
 
-  // Re-frame whenever a new layout arrives (first load and every filter change): the map re-flows,
-  // so the old camera position is meaningless. Hover/selection never rebuilds the scene.
+  // When a new layout arrives: focus the node that caused it (a fold toggle or a navigation),
+  // else re-frame the whole map — the re-flow made the old camera position meaningless.
+  // Hover/selection never rebuilds the scene.
   const lastScene = useRef<Scene | null>(null);
   useEffect(() => {
     if (!scene || scene === lastScene.current) return;
     lastScene.current = scene;
-    fit({ width: scene.width, height: scene.height }, view, insets);
-  }, [scene, fit, view, insets]);
+    const target = pendingFocus.current !== null ? scene.byId.get(pendingFocus.current) : undefined;
+    pendingFocus.current = null;
+    if (target) focusBox(target, view, insets);
+    else fit({ width: scene.width, height: scene.height }, view, insets);
+  }, [scene, fit, focusBox, view, insets]);
 
   const fitScene = useCallback(() => {
     if (scene) fit({ width: scene.width, height: scene.height }, view, insets);
   }, [scene, fit, view, insets]);
 
-  const { matches, matchCount } = useMemo(() => {
+  const { matches, matchCount, matchList } = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return { matches: new Set<string>(), matchCount: 0 };
-    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    if (!q) return { matches: new Set<string>(), matchCount: 0, matchList: [] as Node[] };
     const hit = new Set<string>();
-    let count = 0;
+    const found: { n: Node; rank: number }[] = [];
     for (const n of graph.nodes) {
       const hay = [n.name, n.id, n.kind, n.tech ?? "", ...n.tags].join(" ").toLowerCase();
       if (hay.includes(q)) {
-        count++;
+        const name = n.name.toLowerCase();
+        found.push({ n, rank: name === q ? 0 : name.startsWith(q) ? 1 : name.includes(q) ? 2 : 3 });
         hit.add(n.id);
         // Keep ancestors readable so matches have context.
         let parent = n.parent;
@@ -98,16 +157,29 @@ export function App({ graph }: { graph: Graph }) {
         }
       }
     }
-    return { matches: hit, matchCount: count };
-  }, [graph, search]);
+    found.sort((a, b) => a.rank - b.rank || a.n.name.length - b.n.name.length);
+    return { matches: hit, matchCount: found.length, matchList: found.slice(0, 12).map((f) => f.n) };
+  }, [graph, byId, search]);
 
   const navigateTo = useCallback(
     (id: string) => {
       setSelected(id);
       const box = scene?.byId.get(id);
-      if (box) focusBox(box, view, insets);
+      if (box) {
+        focusBox(box, view, insets);
+        return;
+      }
+      // The target is folded away — unfold its ancestors and focus once the layout lands.
+      const ancestors: string[] = [];
+      for (let cur = byId.get(id)?.parent; cur; cur = byId.get(cur)?.parent ?? null) ancestors.push(cur);
+      setFolded((prev) => {
+        const next = new Set(prev);
+        for (const a of ancestors) next.delete(a);
+        return next;
+      });
+      pendingFocus.current = id;
     },
-    [scene, focusBox, view, insets],
+    [scene, byId, focusBox, view, insets],
   );
 
   useKeyboard({
@@ -156,6 +228,7 @@ export function App({ graph }: { graph: Graph }) {
           searchActive={search.trim().length > 0}
           onSelect={setSelected}
           onHover={setHovered}
+          onToggle={toggleFold}
         />
       )}
 
@@ -165,7 +238,11 @@ export function App({ graph }: { graph: Graph }) {
         filters={filters}
         search={search}
         matchCount={matchCount}
+        results={matchList}
+        foldable={allContainers.size > 0 && graph.nodes.length > FOLD_THRESHOLD}
+        foldedCount={folded.size}
         onSearch={setSearch}
+        onNavigate={navigateTo}
         onToggleNodeKind={(kind: NodeKind) =>
           setFilters((f) => ({ ...f, hiddenNodeKinds: toggle(f.hiddenNodeKinds, kind) }))
         }
@@ -173,6 +250,8 @@ export function App({ graph }: { graph: Graph }) {
           setFilters((f) => ({ ...f, hiddenEdgeKinds: toggle(f.hiddenEdgeKinds, kind) }))
         }
         onShowEverything={() => setFilters(NO_FILTERS)}
+        onFoldAll={foldAll}
+        onUnfoldAll={unfoldAll}
       />
 
       {/* One card, two modes: hovering previews a node, clicking pins it. While hovering, the

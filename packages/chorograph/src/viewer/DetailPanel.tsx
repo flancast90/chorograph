@@ -27,7 +27,14 @@ export function DetailPanel({ graph, nodeId, pinned, onNavigate, onClose }: Prop
   if (!node) return null;
 
   const k = KIND[node.kind];
-  const parent = node.parent ? graph.nodes.find((n) => n.id === node.parent) : null;
+  // Full ancestor path, root first — with deep nesting the whole trail matters, not just the parent.
+  const ancestors: Node[] = [];
+  for (let pid = node.parent; pid; ) {
+    const p = graph.nodes.find((n) => n.id === pid);
+    if (!p) break;
+    ancestors.unshift(p);
+    pid = p.parent;
+  }
   const children = graph.nodes.filter((n) => n.parent === node.id);
   const outbound = graph.edges.filter((e) => e.from === node.id);
   const inbound = graph.edges.filter((e) => e.to === node.id);
@@ -130,17 +137,50 @@ export function DetailPanel({ graph, nodeId, pinned, onNavigate, onClose }: Prop
         </div>
       )}
 
-      {parent && (
+      {ancestors.length > 0 && (
         <Section label="Lives in">
-          <NodeLink node={parent} onNavigate={onNavigate} />
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
+            {ancestors.map((a, i) => (
+              <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                {i > 0 && <span style={{ color: theme.inkFaint, fontSize: 11, padding: "0 2px" }}>›</span>}
+                <button
+                  type="button"
+                  onClick={() => onNavigate(a.id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    background: "transparent",
+                    border: "none",
+                    borderRadius: theme.radius,
+                    padding: "2px 4px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontFamily: theme.fontSans,
+                    color: theme.ink,
+                  }}
+                >
+                  <span style={{ color: KIND[a.kind].color, display: "inline-flex" }}>
+                    <KindIcon kind={a.kind} size={12} />
+                  </span>
+                  {a.name}
+                </button>
+              </span>
+            ))}
+          </div>
         </Section>
       )}
 
       {children.length > 0 && (
         <Section label={`Contains · ${children.length}`}>
-          {children.map((c) => (
+          {children.slice(0, 24).map((c) => (
             <NodeLink key={c.id} node={c} onNavigate={onNavigate} />
           ))}
+          {children.length > 24 && (
+            <span style={{ fontSize: 11, color: theme.inkFaint, padding: "2px 0" }}>
+              …and {children.length - 24} more — unfold the box to see them all
+            </span>
+          )}
         </Section>
       )}
 

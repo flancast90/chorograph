@@ -1,10 +1,12 @@
 /**
- * Layout — the whole map, laid out once, everything visible.
+ * Layout — recursive ELK, drawing exactly what the current detail level asks for.
  *
- * There is no expand/collapse: declared maps are small enough (tens to a few hundred nodes) that
- * the honest answer is to always draw everything. The algorithm is a recursive ELK pass:
+ * Small maps draw everything. Big maps start folded: a collapsed container renders as a chip
+ * with a count, its subtree hidden, and every edge into that subtree lifted onto the chip (and
+ * bundled when several land on the same line). Double-clicking unfolds one level at a time, so
+ * a 1,500-node codebase reads like a map instead of a mural. The algorithm:
  *
- *  1. Filter the graph (hidden kinds disappear entirely, along with their subtrees and edges).
+ *  1. Filter the graph (hidden kinds disappear entirely; collapsed subtrees fold into chips).
  *  2. Depth-first, lay out each container's children with ELK layered. Edges are "lifted" to the
  *     deepest container that holds both endpoints, so a call from `orders` to `payments-db.charges`
  *     still pulls those containers next to each other.
@@ -23,23 +25,87 @@ export interface ViewGraph {
   readonly children: ReadonlyMap<string, readonly Node[]>;
   readonly roots: readonly Node[];
   readonly edges: readonly Edge[];
+  /** Bundle size per visible edge id — how many declared edges were lifted onto it. */
+  readonly bundleOf: ReadonlyMap<string, number>;
+  /** Folded-descendant count per collapsed container id. */
+  readonly collapsedCount: ReadonlyMap<string, number>;
 }
 
-/** Apply filters: a hidden node takes its whole subtree with it; edges need both endpoints alive. */
-export function applyFilters(graph: Graph, filters: Filters): ViewGraph {
-  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
-  const hidden = (n: Node): boolean => {
-    for (let cur: Node | undefined = n; cur; cur = cur.parent ? byId.get(cur.parent) : undefined) {
+/** Every container id in the graph (nodes with at least one child). */
+export function containerIds(graph: Graph): Set<string> {
+  const ids = new Set<string>();
+  for (const n of graph.nodes) if (n.parent !== null) ids.add(n.parent);
+  return ids;
+}
+
+/**
+ * Apply filters and folding. A kind-hidden node takes its whole subtree with it. A collapsed
+ * container stays visible as a chip but its subtree folds: descendants disappear and their
+ * edges are lifted to the nearest visible ancestor, deduplicated per (from, to, kind) with a
+ * bundle count so one line can honestly say "and 11 more like this".
+ */
+export function applyFilters(graph: Graph, filters: Filters, collapsed: ReadonlySet<string>): ViewGraph {
+  const all = new Map(graph.nodes.map((n) => [n.id, n]));
+  const kindHidden = (n: Node): boolean => {
+    for (let cur: Node | undefined = n; cur; cur = cur.parent ? all.get(cur.parent) : undefined) {
       if (filters.hiddenNodeKinds.has(cur.kind)) return true;
     }
     return false;
   };
+  const folded = (n: Node): boolean => {
+    for (let cur = n.parent ? all.get(n.parent) : undefined; cur; cur = cur.parent ? all.get(cur.parent) : undefined) {
+      if (collapsed.has(cur.id)) return true;
+    }
+    return false;
+  };
 
-  const nodes = graph.nodes.filter((n) => !hidden(n));
-  const alive = new Set(nodes.map((n) => n.id));
-  const edges = graph.edges.filter(
-    (e) => !filters.hiddenEdgeKinds.has(e.kind) && alive.has(e.from) && alive.has(e.to),
-  );
+  const nodes = graph.nodes.filter((n) => !kindHidden(n) && !folded(n));
+  const alive = new Map(nodes.map((n) => [n.id, n]));
+
+  // Folded descendants per visible collapsed container (kind-hidden ones don't count).
+  const collapsedCount = new Map<string, number>();
+  for (const n of graph.nodes) {
+    if (alive.has(n.id) || kindHidden(n)) continue;
+    for (let cur = n.parent ? all.get(n.parent) : undefined; cur; cur = cur.parent ? all.get(cur.parent) : undefined) {
+      if (alive.has(cur.id)) {
+        collapsedCount.set(cur.id, (collapsedCount.get(cur.id) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+
+  // Lift edges out of folded subtrees onto the nearest visible ancestor; bundle duplicates.
+  const surface = (id: string): Node | undefined => {
+    for (let cur = all.get(id); cur; cur = cur.parent ? all.get(cur.parent) : undefined) {
+      if (alive.has(cur.id)) return cur;
+    }
+    return undefined;
+  };
+  const edges: Edge[] = [];
+  const bundleOf = new Map<string, number>();
+  const liftIndex = new Map<string, Edge>();
+  for (const e of graph.edges) {
+    if (filters.hiddenEdgeKinds.has(e.kind)) continue;
+    const from = surface(e.from);
+    const to = surface(e.to);
+    if (!from || !to || from.id === to.id) continue;
+    if (from.id === e.from && to.id === e.to) {
+      edges.push(e);
+      continue;
+    }
+    const key = `${from.id}>${to.id}:${e.kind}`;
+    const existing = liftIndex.get(key);
+    if (existing) {
+      bundleOf.set(existing.id, (bundleOf.get(existing.id) ?? 1) + 1);
+      continue;
+    }
+    const lifted: Edge = { ...e, id: `lift:${key}`, from: from.id, to: to.id };
+    liftIndex.set(key, lifted);
+    bundleOf.set(lifted.id, 1);
+    edges.push(lifted);
+  }
+  // A bundle of one is just an edge — drop the count.
+  for (const [id, n] of [...bundleOf]) if (n < 2) bundleOf.delete(id);
 
   const children = new Map<string, Node[]>();
   const roots: Node[] = [];
@@ -51,7 +117,7 @@ export function applyFilters(graph: Graph, filters: Filters): ViewGraph {
       else children.set(n.parent, [n]);
     }
   }
-  return { nodes, byId: new Map(nodes.map((n) => [n.id, n])), children, roots, edges };
+  return { nodes, byId: alive, children, roots, edges, bundleOf, collapsedCount };
 }
 
 /** Walk up from `id` to the node that is a direct child of `container` (null = top level). */
@@ -145,17 +211,20 @@ async function layoutChildren(
   return { boxes, routes, width: result.width ?? 0, height: result.height ?? 0 };
 }
 
-export async function buildScene(graph: Graph, filters: Filters): Promise<Scene> {
-  const view = applyFilters(graph, filters);
+export async function buildScene(graph: Graph, filters: Filters, collapsed: ReadonlySet<string>): Promise<Scene> {
+  const view = applyFilters(graph, filters, collapsed);
   const sizes = new Map<string, { w: number; h: number }>();
   const layouts = new Map<string, ContainerLayout>();
 
-  // Depth-first measure: leaves have fixed sizes, containers wrap their laid-out children.
+  // Depth-first measure: leaves have fixed sizes, collapsed containers are chip-sized leaves
+  // (name + count), open containers wrap their laid-out children.
   async function measure(id: string | null): Promise<void> {
     const kids = id === null ? view.roots : view.children.get(id) ?? [];
     for (const k of kids) {
       if (isContainer(view, k)) await measure(k.id);
-      else sizes.set(k.id, { w: leafWidth(k.name), h: GEOM.leafHeight });
+      else if (view.collapsedCount.has(k.id)) {
+        sizes.set(k.id, { w: leafWidth(k.name) + 34, h: GEOM.leafHeight });
+      } else sizes.set(k.id, { w: leafWidth(k.name), h: GEOM.leafHeight });
     }
     const laid = await layoutChildren(view, id, sizes);
     layouts.set(id ?? "__root__", laid);
@@ -180,6 +249,7 @@ export async function buildScene(graph: Graph, filters: Filters): Promise<Scene>
     for (const k of kids) {
       const box = laid.boxes.get(k.id);
       if (!box) continue;
+      const foldedCount = view.collapsedCount.get(k.id);
       const p: PlacedNode = {
         id: k.id,
         x: ox + box.x,
@@ -189,6 +259,7 @@ export async function buildScene(graph: Graph, filters: Filters): Promise<Scene>
         node: k,
         depth,
         isContainer: isContainer(view, k),
+        ...(foldedCount !== undefined ? { collapsedCount: foldedCount } : {}),
       };
       placed.push(p);
       byId.set(k.id, p);
@@ -220,11 +291,21 @@ export async function buildScene(graph: Graph, filters: Filters): Promise<Scene>
         const parent = container ? byId.get(container) : null;
         const ox = parent ? parent.x + GEOM.containerPad : 0;
         const oy = parent ? parent.y + GEOM.headerHeight + GEOM.containerPad : 0;
-        placedEdges.push({ edge: e, points: route.map((p) => ({ x: p.x + ox, y: p.y + oy })) });
+        const bundled = view.bundleOf.get(e.id);
+        placedEdges.push({
+          edge: e,
+          points: route.map((p) => ({ x: p.x + ox, y: p.y + oy })),
+          ...(bundled !== undefined ? { bundled } : {}),
+        });
         continue;
       }
     }
-    placedEdges.push({ edge: e, points: elbow(from, to, placedEdges.length) });
+    const bundled = view.bundleOf.get(e.id);
+    placedEdges.push({
+      edge: e,
+      points: elbow(from, to, placedEdges.length),
+      ...(bundled !== undefined ? { bundled } : {}),
+    });
   }
 
   const width = Math.max(320, ...placed.map((p) => p.x + p.width)) + 8;
