@@ -1,44 +1,22 @@
 /**
- * chorograph public API — assemble a {@link Graph} from any TypeScript project, or bring your own
- * {@link Provider}. Everything here is language-agnostic except {@link createTypeScriptProvider}.
+ * chorograph public API.
  *
- * @chorograph group="Core" role=usecase comms=in-proc
+ * Author a map with {@link defineSystem}, export it as the default export of a TypeScript file,
+ * and render it with `chorograph render <file>`. The serialisable {@link Graph} contract is
+ * exported for anyone piping `graph.json` into their own tooling.
  */
-export * from "./core/model.ts";
-export { parseAnnotation, type ParsedAnnotation, ANNOTATION_TAGS } from "./core/annotations.ts";
-export { assemble, type AssembleOptions } from "./core/graph.ts";
-export { diffGraphs, type DiffOptions } from "./core/diff.ts";
-export { createTypeScriptProvider } from "./providers/typescript.ts";
-export {
-  scanRef,
-  gitRoot,
-  defaultBranch,
-  mergeBaseWithDefault,
-  WORKTREE,
-} from "./git.ts";
-
-import { assemble } from "./core/graph.ts";
-import type { Graph, Provider } from "./core/model.ts";
-import { createTypeScriptProvider } from "./providers/typescript.ts";
-
-export interface ScanOptions {
-  /** Layer optional `@chorograph` annotations on top of the zero-config folder map. Default true. */
-  readonly annotations?: boolean;
-  readonly onWarn?: (msg: string) => void;
-  readonly provider?: Provider;
-  readonly version?: string;
-}
-
-/** Scan a directory and return the assembled architecture graph. */
-export async function scan(root: string, opts: ScanOptions = {}): Promise<Graph> {
-  const provider = opts.provider ?? createTypeScriptProvider();
-  const result = await provider.scan(root, {
-    annotations: opts.annotations ?? true,
-    onWarn: opts.onWarn ?? (() => {}),
-  });
-  return assemble(result, {
-    root,
-    provider: provider.name,
-    version: opts.version ?? "0.1.0",
-  });
-}
+export { defineSystem, isSystem } from "./core/define.ts";
+export type {
+  System,
+  SystemBuilder,
+  SystemOptions,
+  ContainerApi,
+  NodeRef,
+  NodeOptions,
+  DomainHandle,
+  ServiceHandle,
+  DatabaseHandle,
+  EventHandle,
+} from "./core/define.ts";
+export { NODE_KINDS, EDGE_KINDS } from "./core/model.ts";
+export type { Graph, GraphMeta, Node, Edge, NodeKind, EdgeKind } from "./core/model.ts";

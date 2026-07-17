@@ -1,7 +1,7 @@
 {
   "name": "chorograph",
-  "version": "0.1.0",
-  "description": "A chorography of your codebase — map every region, module, and function, and how they actually connect.",
+  "version": "0.2.0",
+  "description": "Architecture as code — declare your services, databases, events, and how they connect; get a clear, shareable map.",
   "type": "module",
   "license": "MIT",
   "author": "flancast90",
@@ -15,11 +15,11 @@
   },
   "keywords": [
     "architecture",
-    "dependency-graph",
+    "architecture-as-code",
+    "diagram",
+    "c4",
     "visualization",
-    "codebase-map",
-    "static-analysis",
-    "typescript"
+    "system-design"
   ],
   "bin": {
     "chorograph": "./dist/cli.js"
@@ -42,6 +42,7 @@
   },
   "scripts": {
     "chorograph": "tsx src/cli.ts",
+    "example": "tsx src/cli.ts render examples/streamline.ts",
     "build": "node scripts/build.mjs",
     "prepare": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
@@ -49,14 +50,13 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "elkjs": "^0.9.3",
-    "typescript": "^5.7.2"
+    "esbuild": "^0.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
-    "esbuild": "^0.24.2",
+    "elkjs": "^0.9.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.19.2",

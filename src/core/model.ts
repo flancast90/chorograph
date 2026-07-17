@@ -1,186 +1,98 @@
 /**
  * The vocabulary chorograph speaks in.
  *
- * A codebase is modelled as a **containment tree** of {@link Node}s — regions nest into regions,
- * regions hold modules, modules hold symbols — plus a set of directed {@link Edge}s describing how
- * those things actually talk to each other. This is deliberately language-agnostic: a
- * {@link Provider} for any language produces this same shape, and everything downstream (layout,
- * rollup, rendering) speaks only this vocabulary.
+ * A system is a **containment tree** of {@link Node}s — domains hold services and databases,
+ * services hold endpoints and jobs, databases hold tables — plus a set of directed {@link Edge}s
+ * describing how those things talk to each other.
  *
- * chorograph is **zero-config**: structure (which layer/service a thing belongs to) defaults to the
- * project's own directory tree, and edges come from `import` statements — both facts, not conventions,
- * so no assumptions are made about what any folder *means*. A one-line `@chorograph` annotation is
- * optional: it adds semantics (`role`, `comms`, `talksTo`, `status`) or overrides `group` when the
- * folder layout and the logical architecture diverge. Drop it in any TypeScript project and it works.
+ * Everything is declared explicitly in code with `defineSystem`. chorograph never scans source
+ * files or guesses at structure: the map contains exactly what you wrote down, which is what makes
+ * it trustworthy as an architecture document.
+ */
+
+/**
+ * What a node *is*. A small closed set, one icon and one colour each.
  *
- * @chorograph role=domain-model group="Core" comms=in-proc
+ * Three kinds are containers: `domain` (holds anything), `service` (holds endpoints and jobs),
+ * and `database` (holds tables). Everything else is a leaf.
  */
+export type NodeKind =
+  | "domain" // a bounded context / grouping — the only kind that exists purely to contain others
+  | "service" // a deployable process: API server, worker, consumer
+  | "endpoint" // an API surface a service exposes: HTTP route, RPC method, GraphQL field
+  | "job" // scheduled or background work owned by a service
+  | "database" // a database instance or cluster
+  | "table" // a table / collection inside a database
+  | "cache" // an in-memory store: Redis, Memcached
+  | "bucket" // blob storage: S3, GCS
+  | "queue" // a queue or topic: SQS, Kafka, Rabbit
+  | "event" // a named domain event that flows between services
+  | "external"; // a third-party system you don't operate: Stripe, SendGrid
+
+export const NODE_KINDS: readonly NodeKind[] = [
+  "domain",
+  "service",
+  "endpoint",
+  "job",
+  "database",
+  "table",
+  "cache",
+  "bucket",
+  "queue",
+  "event",
+  "external",
+];
 
 /**
- * A node's structural level in the containment tree — the "general parts of software" axis.
- * `region` nests arbitrarily deep via a `group` path (e.g. `Domain/Ports`), so this stays a small
- * closed set while the tree carries the depth. Groups come from the directory tree by default, or an
- * explicit annotation override.
+ * How two nodes are connected. Directed, with one uniform rule: **`from` is the thing doing the
+ * verb, `to` is the thing the verb is done to.** “orders *reads* orders-db”, “notifications
+ * *consumes* order.placed”. The verb is the edge kind, so every arrow reads as a sentence.
  */
-export type Containment = "region" | "module" | "symbol" | "external";
+export type EdgeKind = "calls" | "reads" | "writes" | "emits" | "consumes" | "uses";
 
-/**
- * What a symbol *is* syntactically. Coarse on purpose — finer, opinionated classification lives in
- * {@link Node.roles} so it can be extended without touching the core.
- */
-export type SymbolType =
-  | "function"
-  | "class"
-  | "interface"
-  | "type"
-  | "constant"
-  | "enum"
-  | "component"
-  | "unknown";
+export const EDGE_KINDS: readonly EdgeKind[] = ["calls", "reads", "writes", "emits", "consumes", "uses"];
 
-/**
- * A semantic sub-type used for filtering and colour. Open-ended by design: `agent-tool`, `http-route`,
- * `repository`, `port`, `adapter`, `usecase`, `workflow`, `event`, `cli`, `client`, `config`, … A node
- * keeps its structural {@link Node.symbolType} *and* any number of roles — an agent tool is still a
- * function, so you can filter to "functions" or to "agent tools" independently.
- */
-export type Role = string;
-
-/** How two nodes communicate. Drives edge colour and label; open-ended, with well-known values. */
-export type Comms =
-  | "in-proc" // direct call in the same process (the default derived edge)
-  | "http"
-  | "sse"
-  | "sql"
-  | "queue"
-  | "grpc"
-  | "temporal"
-  | "oauth"
-  | "llm"
-  | "embedding"
-  | "s3"
-  | "smtp"
-  | "mcp"
-  | "cron"
-  | "import" // static module dependency, unclassified
-  | (string & {});
-
-export type Status = "active" | "deprecated" | "experimental";
-
-/** How a node changed between two revisions of a map. Absent = unchanged. */
-export type NodeDiff = "added" | "removed" | "touched";
-/** How an edge changed between two revisions. Absent = unchanged. */
-export type EdgeDiff = "added" | "removed";
-
-/** A single thing in the map: a region, a module (file), a symbol, or an external system. */
+/** A single thing on the map. */
 export interface Node {
-  /** Stable id. Regions: `region:<path>`. Modules: relative file path. Symbols: `<file>#<name>`. */
+  /** Stable slug path derived from names: `commerce/orders/post-orders`. */
   readonly id: string;
-  readonly label: string;
-  readonly containment: Containment;
-  /** Containment parent id, or `null` for a top-level region / external. */
+  readonly name: string;
+  readonly kind: NodeKind;
+  /** Containment parent id, or `null` for a top-level node. */
   readonly parent: string | null;
-  readonly symbolType?: SymbolType;
-  /** Semantic sub-types for filtering (`agent-tool`, `http-route`, …). Always present, may be empty. */
-  readonly roles: readonly Role[];
-  readonly comms: readonly Comms[];
-  readonly status: Status;
-  readonly tags: readonly string[];
+  /** One or two sentences on what this thing is for. Shown in the detail panel. */
   readonly description?: string;
-  readonly file?: string;
-  readonly line?: number;
-  readonly exported?: boolean;
-  /** Raw declared containment path (`Domain/Ports`) this node was placed under. For reference. */
-  readonly group?: string;
-  /** Whether the annotation/provider marked this a legitimate entrypoint (never flagged orphan). */
-  readonly root?: boolean;
-  /** Cheap size metric for level-of-detail sizing: lines of code, or descendant count for regions. */
-  readonly weight?: number;
-  /** Present on graphs produced by {@link diffGraphs}. */
-  readonly diff?: NodeDiff;
+  /** Implementation note: `PostgreSQL 16`, `Node.js`, `Kafka`. */
+  readonly tech?: string;
+  readonly tags: readonly string[];
 }
 
-/** A directed connection. Every edge points `from → to`; there are no undirected edges. */
+/** A directed connection between two nodes. */
 export interface Edge {
   readonly id: string;
   readonly from: string;
   readonly to: string;
-  /** `import`/`call` are derived from code; `talks-to` is declared in an annotation. */
-  readonly relation: "import" | "call" | "talks-to";
-  readonly comms: Comms;
-  /** Fan-in count for rolled-up edges (how many underlying edges this represents). */
-  readonly weight: number;
+  readonly kind: EdgeKind;
+  /** Optional annotation: protocol (`HTTP`, `gRPC`) or a short verb phrase. */
   readonly label?: string;
-  /** Present on graphs produced by {@link diffGraphs}. */
-  readonly diff?: EdgeDiff;
-}
-
-/** Deadness verdicts, split by axis so the viewer can style each differently. */
-export interface Dead {
-  /** Non-root symbols with zero inbound edges. */
-  readonly orphans: readonly string[];
-  /** Nodes reachable from no entrypoint (root) by following directed edges. */
-  readonly unreachable: readonly string[];
-  /** `status=deprecated` nodes. */
-  readonly deprecated: readonly string[];
-}
-
-/** Summary of a `chorograph diff` run — present when the graph carries a revision overlay. */
-export interface DiffMeta {
-  readonly base: string;
-  readonly head: string;
-  readonly nodesAdded: number;
-  readonly nodesRemoved: number;
-  readonly nodesTouched: number;
-  readonly edgesAdded: number;
-  readonly edgesRemoved: number;
 }
 
 export interface GraphMeta {
   readonly tool: "chorograph";
   readonly version: string;
   readonly generatedAt: string;
-  readonly root: string;
-  readonly provider: string;
+  /** The system name passed to `defineSystem`. */
+  readonly name: string;
+  readonly description?: string;
   readonly counts: {
-    readonly regions: number;
-    readonly modules: number;
-    readonly symbols: number;
-    readonly externals: number;
-    readonly edges: number;
+    readonly nodes: Readonly<Partial<Record<NodeKind, number>>>;
+    readonly edges: Readonly<Partial<Record<EdgeKind, number>>>;
   };
-  /** Distinct role → count, so the viewer can build filters without a full scan. */
-  readonly roles: Record<string, number>;
-  /** Present when this graph is a merged base→head revision overlay. */
-  readonly diff?: DiffMeta;
 }
 
 /** The complete, serialisable map. This is the on-disk `graph.json` contract. */
 export interface Graph {
   readonly meta: GraphMeta;
-  readonly nodes: readonly Node[];
-  readonly edges: readonly Edge[];
-  readonly dead: Dead;
-}
-
-/**
- * A language provider turns a directory into raw nodes + edges. The core assembles containment,
- * rollup, deadness and metadata around it, so a provider only has to know how to read one language.
- */
-export interface Provider {
-  readonly name: string;
-  /** True if this provider should handle the given root (e.g. sees a tsconfig / package.json). */
-  detect(root: string): boolean;
-  scan(root: string, opts: ProviderOptions): Promise<ProviderResult> | ProviderResult;
-}
-
-export interface ProviderOptions {
-  readonly onWarn: (msg: string) => void;
-  /** Honour semantic annotations (`@chorograph` / `@archmap`) on top of zero-config inference. */
-  readonly annotations: boolean;
-}
-
-export interface ProviderResult {
   readonly nodes: readonly Node[];
   readonly edges: readonly Edge[];
 }

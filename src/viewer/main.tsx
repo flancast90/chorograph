@@ -1,7 +1,5 @@
 /**
  * Viewer entry — esbuild IIFE target. Reads `window.__CHOROGRAPH__`, mounts on `#root`.
- *
- * @chorograph group="Viewer" role=component comms=in-proc
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

@@ -1,7 +1,5 @@
 /**
- * Pan/zoom viewport helpers + keyboard bindings.
- *
- * @chorograph group="Viewer" role=usecase comms=in-proc
+ * Pan/zoom camera + the three keyboard shortcuts (`/` search, `f` fit, `esc` clear).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -11,7 +9,7 @@ export interface Camera {
   scale: number;
 }
 
-/** Pixels reserved by floating chrome (control panel, detail panel). */
+/** Pixels reserved by floating chrome (sidebar on the left, detail panel on the right). */
 export interface ViewInsets {
   left: number;
   right: number;
@@ -19,22 +17,9 @@ export interface ViewInsets {
   bottom: number;
 }
 
-export const ZERO_INSETS: ViewInsets = { left: 0, right: 0, top: 0, bottom: 0 };
-
-export function useCamera(initial?: Partial<Camera>) {
-  const [camera, setCamera] = useState<Camera>({ x: 40, y: 40, scale: 1, ...initial });
+export function useCamera() {
+  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, scale: 1 });
   const dragging = useRef<{ px: number; py: number; cx: number; cy: number } | null>(null);
-  const reduced = useRef(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    reduced.current = mq.matches;
-    const fn = () => {
-      reduced.current = mq.matches;
-    };
-    mq.addEventListener("change", fn);
-    return () => mq.removeEventListener("change", fn);
-  }, []);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -42,52 +27,68 @@ export function useCamera(initial?: Partial<Camera>) {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     setCamera((c) => {
-      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
-      const next = Math.min(3, Math.max(0.15, c.scale * factor));
+      const factor = e.deltaY < 0 ? 1.09 : 1 / 1.09;
+      const next = Math.min(3, Math.max(0.1, c.scale * factor));
       const wx = (mx - c.x) / c.scale;
       const wy = (my - c.y) / c.scale;
       return { scale: next, x: mx - wx * next, y: my - wy * next };
     });
   }, []);
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0 && e.button !== 1) return;
-    // Don't start pan when clicking interactive controls.
-    const t = e.target as HTMLElement;
-    if (t.closest("[data-node], [data-ui]")) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    dragging.current = { px: e.clientX, py: e.clientY, cx: camera.x, cy: camera.y };
-  }, [camera.x, camera.y]);
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      const t = e.target as HTMLElement;
+      if (t.closest("[data-ui]")) return; // panels own their own pointer events
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      dragging.current = { px: e.clientX, py: e.clientY, cx: camera.x, cy: camera.y };
+    },
+    [camera.x, camera.y],
+  );
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const d = dragging.current;
     if (!d) return;
-    setCamera((c) => ({
-      ...c,
-      x: d.cx + (e.clientX - d.px),
-      y: d.cy + (e.clientY - d.py),
-    }));
+    setCamera((c) => ({ ...c, x: d.cx + (e.clientX - d.px), y: d.cy + (e.clientY - d.py) }));
   }, []);
 
   const onPointerUp = useCallback(() => {
     dragging.current = null;
   }, []);
 
+  /** True if the last pointer interaction was a drag (so click shouldn't clear selection). */
+  const wasDrag = useRef(false);
+  const onPointerMoveTracked = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragging.current) {
+        const d = dragging.current;
+        if (Math.abs(e.clientX - d.px) + Math.abs(e.clientY - d.py) > 4) wasDrag.current = true;
+      }
+      onPointerMove(e);
+    },
+    [onPointerMove],
+  );
+  const onPointerDownTracked = useCallback(
+    (e: React.PointerEvent) => {
+      wasDrag.current = false;
+      onPointerDown(e);
+    },
+    [onPointerDown],
+  );
+
   const fit = useCallback(
-    (bounds: { width: number; height: number }, view: { width: number; height: number }, insets: ViewInsets = ZERO_INSETS) => {
+    (bounds: { width: number; height: number }, view: { width: number; height: number }, insets: ViewInsets) => {
       if (bounds.width <= 0 || bounds.height <= 0) return;
-      const pad = 48;
+      const pad = 40;
       const availW = Math.max(120, view.width - insets.left - insets.right - pad * 2);
       const availH = Math.max(120, view.height - insets.top - insets.bottom - pad * 2);
-      const scale = Math.min(1.2, Math.max(0.05, Math.min(availW / bounds.width, availH / bounds.height)));
-      const frameLeft = insets.left;
-      const frameTop = insets.top;
+      const scale = Math.min(1.15, Math.max(0.05, Math.min(availW / bounds.width, availH / bounds.height)));
       const frameW = view.width - insets.left - insets.right;
       const frameH = view.height - insets.top - insets.bottom;
       setCamera({
         scale,
-        x: frameLeft + (frameW - bounds.width * scale) / 2,
-        y: frameTop + (frameH - bounds.height * scale) / 2,
+        x: insets.left + (frameW - bounds.width * scale) / 2,
+        y: insets.top + (frameH - bounds.height * scale) / 2,
       });
     },
     [],
@@ -97,75 +98,53 @@ export function useCamera(initial?: Partial<Camera>) {
     (
       box: { x: number; y: number; width: number; height: number },
       view: { width: number; height: number },
-      insets: ViewInsets = ZERO_INSETS,
+      insets: ViewInsets,
     ) => {
-      const pad = 64;
-      const frameLeft = insets.left;
-      const frameTop = insets.top;
       const frameW = Math.max(120, view.width - insets.left - insets.right);
       const frameH = Math.max(120, view.height - insets.top - insets.bottom);
-      const sx = (frameW - pad * 2) / Math.max(box.width, 1);
-      const sy = (frameH - pad * 2) / Math.max(box.height, 1);
-      const scale = Math.min(1.5, Math.max(0.35, Math.min(sx, sy)));
-      setCamera({
-        scale,
-        x: frameLeft + frameW / 2 - (box.x + box.width / 2) * scale,
-        y: frameTop + frameH / 2 - (box.y + box.height / 2) * scale,
+      setCamera((c) => {
+        const scale = Math.max(0.5, Math.min(1.15, c.scale));
+        return {
+          scale,
+          x: insets.left + frameW / 2 - (box.x + box.width / 2) * scale,
+          y: insets.top + frameH / 2 - (box.y + box.height / 2) * scale,
+        };
       });
     },
     [],
   );
 
-  return { camera, setCamera, onWheel, onPointerDown, onPointerMove, onPointerUp, fit, focusBox, reduced };
+  return {
+    camera,
+    onWheel,
+    onPointerDown: onPointerDownTracked,
+    onPointerMove: onPointerMoveTracked,
+    onPointerUp,
+    wasDrag,
+    fit,
+    focusBox,
+  };
 }
 
-export function useKeyboard(handlers: {
-  onSearch: () => void;
-  onFit: () => void;
-  onEscape: () => void;
-  onArrow: (dir: "up" | "down" | "left" | "right") => void;
-  onEnter: () => void;
-  onTogglePanel?: () => void;
-}) {
+export function useKeyboard(handlers: { onSearch: () => void; onFit: () => void; onEscape: () => void }) {
   const ref = useRef(handlers);
   ref.current = handlers;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      const typing = tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable;
-      if (e.key === "/" && !typing) {
+      const el = e.target as HTMLElement | null;
+      const typing = el?.tagName === "INPUT" || el?.tagName === "TEXTAREA" || el?.isContentEditable;
+      if (e.key === "Escape") {
+        ref.current.onEscape();
+        return;
+      }
+      if (typing) return;
+      if (e.key === "/") {
         e.preventDefault();
         ref.current.onSearch();
-        return;
-      }
-      if (typing) {
-        if (e.key === "Escape") ref.current.onEscape();
-        return;
-      }
-      if (e.key === "f" || e.key === "F") {
+      } else if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         ref.current.onFit();
-      } else if (e.key === "[") {
-        e.preventDefault();
-        ref.current.onTogglePanel?.();
-      } else if (e.key === "Escape") {
-        ref.current.onEscape();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        ref.current.onArrow("up");
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        ref.current.onArrow("down");
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        ref.current.onArrow("left");
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        ref.current.onArrow("right");
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        ref.current.onEnter();
       }
     };
     window.addEventListener("keydown", onKey);

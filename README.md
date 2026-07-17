@@ -1,107 +1,148 @@
 # chorograph
 
-A visual architecture map for reviewing change.
+Architecture as code. Declare your services, databases, events, and how they connect — in plain
+TypeScript — and get a clear, shareable map.
 
-Agentic coding produces very large PRs. The bottleneck has shifted from writing code to reviewing it — and a big diff is far easier to judge as a picture (what got added, removed, rewired) than as thousands of text lines. chorograph renders a codebase as a nested, directed graph — regions › modules › symbols, with directed edges for imports and declared `talksTo` — and is being extended with a diff mode that overlays a change on that graph.
+chorograph deliberately does **not** scan your source code. Import graphs answer “which file
+requires which file”, which is rarely the question; an architecture map should answer “what are the
+parts of this system and how do they talk”. Those facts live in someone's head until they are
+written down, so chorograph gives you a small, typed API for writing them down — and renders
+exactly what you wrote, nothing inferred, nothing guessed. (If you want a scanned import graph,
+that's a different tool — reach for tree-sitter.)
 
 ## Quick start
 
-```bash
-npx chorograph scan .
-```
-
-Writes `.chorograph/graph.json` and `.chorograph/report.html` under the scan root and opens the report. No config file, no annotations required.
-
-## What you get
-
-**The map.** A collapse-first nested canvas: regions nest arbitrarily deep, modules are source files, symbols are annotated exports. Directed edges show `import` dependencies and declared `talksTo` links; they roll up when a container is collapsed. Edge color encodes `comms` (in-proc, http, sql, …); thickness encodes rolled-up weight.
-
-**The semantics.** Role and comms filters, a dead-code toggle, search (`/`), a persistent detail panel, and keyboard navigation. Precomputed layout (ELK) keeps pan/zoom smooth on large graphs — collapse-first level-of-detail means the viewer never draws every node at once.
-
-**The artifacts.** A self-contained `report.html` (inlined viewer + data) and `graph.json` (the serialisable `Graph` contract). Commit either, share the HTML, or pipe JSON into your own tooling.
-
-## Optional annotations
-
-chorograph is zero-config: structure comes from the directory tree, edges from `import` statements. A `@chorograph` JSDoc tag is optional enrichment — add semantics the code cannot reveal (`role`, `comms`, `talksTo`, `status`), mark entrypoints (`root`), or override a node's `group` when folders do not match the logical architecture.
+Create `system.ts`:
 
 ```ts
-/**
- * Persists chat threads and messages.
- * @chorograph repository group="Adapters/Postgres" comms=sql talksTo=Postgres
- */
-export class ChatRepo { /* … */ }
+import { defineSystem } from "chorograph";
+
+export default defineSystem("Acme", (s) => {
+  const gateway = s.service("api-gateway", { tech: "Node.js" });
+
+  const commerce = s.domain("Commerce");
+  const orders = commerce.service("orders");
+  const placeOrder = orders.endpoint("POST /orders");
+  const db = commerce.database("orders-db", { tech: "PostgreSQL 16" });
+  const ordersTable = db.table("orders");
+  const placed = commerce.event("order.placed");
+  const mailer = s.service("mailer");
+
+  s.calls(gateway, placeOrder, "HTTP");
+  s.writes(orders, ordersTable);
+  s.emits(orders, placed);
+  s.consumes(mailer, placed);
+});
 ```
 
-| key | meaning |
+Render it:
+
+```bash
+npx chorograph render system.ts
+```
+
+That writes `.chorograph/graph.json` and `.chorograph/report.html` next to the definition and opens
+the report — a single self-contained HTML file with no network dependencies. Commit it, attach it
+to a design doc, or send it to a teammate.
+
+## The vocabulary
+
+**Things** (nodes) — a small closed set; each kind has one icon and one colour everywhere:
+
+| kind | what it is | created with | contains |
+| --- | --- | --- | --- |
+| `domain` | a bounded context / grouping | `s.domain(name)` | anything |
+| `service` | a deployable process | `s.service(name)` | endpoints, jobs |
+| `endpoint` | an API surface a service exposes | `service.endpoint(name)` | — |
+| `job` | scheduled or background work | `service.job(name)` | — |
+| `database` | a database instance | `s.database(name)` | tables |
+| `table` | a table / collection | `database.table(name)` | — |
+| `cache` | Redis, Memcached, … | `s.cache(name)` | — |
+| `bucket` | S3, GCS, … | `s.bucket(name)` | — |
+| `queue` | SQS, Kafka topic, … | `s.queue(name)` | — |
+| `event` | a named domain event | `s.event(name)` | — |
+| `external` | a third party you don't operate | `s.external(name)` | — |
+
+Every factory accepts `{ description, tech, tags }`. Descriptions surface in the detail panel, so a
+well-annotated map doubles as onboarding documentation.
+
+**Connections** (edges) — six verbs, each drawn in its own colour and line style. Every edge reads
+as a sentence, `from` doing the verb to `to`:
+
+| verb | meaning |
 | --- | --- |
-| *(bare token)* | shorthand for `role` — `repository`, `usecase`, `agent-tool`, … |
-| `group` | slash path overriding directory-derived placement: `group="Domain/Ports"` |
-| `role` / `roles` | semantic sub-types for filtering (lists split on `;` or `,`) |
-| `comms` | how it talks outward: `in-proc`, `http`, `sql`, `sse`, `queue`, `llm`, … |
-| `talksTo` | named external systems or nodes; quote multi-word names |
-| `status` | `active` (default) · `deprecated` · `experimental` |
-| `root` | bare token marking a legitimate entrypoint (never flagged dead) |
-| `tags` / `name` | extra labels · override the display name |
+| `s.calls(a, b, label?)` | request/response: `a` invokes `b` (label it `"HTTP"`, `"gRPC"`, …) |
+| `s.reads(a, store)` | `a` reads from a store |
+| `s.writes(a, store)` | `a` writes to a store |
+| `s.emits(a, event)` | `a` publishes the event |
+| `s.consumes(a, event)` | `a` subscribes to the event |
+| `s.uses(a, b, label?)` | escape hatch when no verb fits |
 
-For a mechanical rubric aimed at coding agents, see [`docs/agent-guide.md`](docs/agent-guide.md).
+Connections take the handles returned by the factories — never strings — so a typo is a compile
+error and renaming a service updates every edge that touches it.
 
-## How it works
+## The viewer
 
-1. **Discover** — recurse the scan root for `.ts`/`.tsx`/`.mts`/`.cts` files (skipping `node_modules`, `dist`, and other build dirs). Every source file becomes a `module` node.
-2. **Structure** — each module's `group` defaults to its directory path relative to the scan root; assembly builds a nested region tree from those paths. An annotation `group=` overrides when the folder layout and logical architecture diverge.
-3. **Edges** — `import` statements are resolved with the TypeScript compiler API (parse-only, no type-checking). Declared `talksTo` in annotations become directed `talks-to` edges.
-4. **Assembly** — the core wires containment parents, rolls up cross-boundary edges, and computes deadness on two axes: **orphans** (non-root symbols with zero inbound edges) and **unreachable** (nodes not reachable from any `root` entrypoint by following directed edges). `status=deprecated` is a third dead axis.
+Everything is always visible — there is no expand/collapse to fight with. The layout is computed
+once (ELK, deterministic) and the viewer stays out of your way:
 
-Bring your own language by implementing the `Provider` interface; the core (region tree, rollup, deadness, layout, viewer) is language-agnostic. TypeScript/JavaScript ships in the box.
+- **Legend = filters.** The sidebar lists every kind present with its icon and count; click to
+  show/hide that kind. Hiding re-runs layout so the map re-flows instead of leaving holes.
+- **Hover** a node to light up its connections and fade the rest, with the verb labelled on each
+  lit edge.
+- **Click** a node for the detail panel: description, tech, contents, and every connection in both
+  directions as clickable sentences (`reads → orders-db`, `← called by api-gateway`).
+- **Search** (`/`) dims non-matches instead of hiding them — spatial memory is the point of a map.
+- `f` fits the view, `esc` clears, drag pans, scroll zooms.
 
-## CLI reference
+## CLI
 
 ```
-chorograph [scan] <dir>    scan a directory → graph.json + report.html (default)
-chorograph serve <dir>     scan, then serve the report with live re-scan
+chorograph render <system.ts>   definition → graph.json + report.html (default command)
+chorograph serve <system.ts>    serve the report; rebuilds from the definition on every refresh
 ```
 
 | flag | effect |
 | --- | --- |
-| `--out <dir>` | output directory (default: `<dir>/.chorograph`) |
-| `--json` | write `graph.json` only; print `graph.meta` to stdout; no HTML |
-| `--no-open` | do not open the report in a browser after scan |
-| `--no-annotations` | ignore `@chorograph` tags; folder structure + imports only |
-| `--port <n>` | port for `serve` (default: `4123`) |
+| `--out <dir>` | output directory (default: `.chorograph` next to the definition) |
+| `--json` | write `graph.json` only; print meta to stdout; no HTML |
+| `--no-open` | don't open the report after rendering |
+| `--port <n>` | port for `serve` (default `4123`) |
 | `--quiet` | suppress progress output |
 
-Examples:
+Definition files are bundled with esbuild before loading, so they can import helpers, share
+constants, or be split across modules — anything that default-exports `defineSystem(…)` works.
+
+## Example
+
+[`examples/streamline.ts`](examples/streamline.ts) is a fictional e-commerce platform that
+exercises every kind and every verb — four domains, seven services, endpoints, jobs, three
+databases with tables, a cache, a bucket, a queue, five events, and three third parties:
 
 ```bash
-npx chorograph scan ./packages
-npx chorograph serve ./src --port 5000
-npx chorograph scan . --json --no-open
-npx chorograph scan . --no-annotations --out build/map
+pnpm example   # renders examples/streamline.ts and writes examples/.chorograph/
 ```
-
-### Reviewing changes (coming)
-
-`chorograph diff [base] [head]` will overlay a change on the architecture map — added, removed, and rewired nodes and edges highlighted on the same nested graph. The command is in progress; expect the interface to evolve.
 
 ## Programmatic API
 
 ```ts
-import { scan } from "chorograph";
+import { defineSystem, type Graph } from "chorograph";
 
-const graph = await scan("./src", {
-  annotations: true,          // default; set false to skip @chorograph tags
-  onWarn: (msg) => console.warn(msg),
+const system = defineSystem("Acme", (s) => {
+  /* … */
 });
 
-console.log(graph.meta.counts);
-console.log(graph.dead.orphans, graph.dead.unreachable);
+const graph: Graph = system.toGraph({ version: "1.0.0" });
+// graph.nodes, graph.edges, graph.meta.counts — the same contract as graph.json
 ```
 
-Also exported: `assemble`, `createTypeScriptProvider`, `parseAnnotation`, and the `Graph` / `Provider` types from `src/core/model.ts`.
+`graph.json` is stable and boring on purpose: nodes with `id`/`name`/`kind`/`parent`, edges with
+`from`/`to`/`kind`, counts in `meta`. Pipe it wherever you like.
 
 ## Design principles
 
-The map is the product. chorograph is built to read like an instrument a principal engineer reaches for — calm, dense, typographic — not a generated infographic. See [`docs/design-principles.md`](docs/design-principles.md).
+The map is the product — calm, light, typographic; colour only where it carries meaning. See
+[`docs/design-principles.md`](docs/design-principles.md).
 
 ## License
 

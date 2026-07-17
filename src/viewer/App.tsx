@@ -1,116 +1,59 @@
 /**
- * Viewer app shell — expansion, filters, search, layout, keyboard.
+ * Viewer shell — owns the little state there is: filters, search, selection, camera.
  *
- * @chorograph group="Viewer" role=component comms=in-proc
+ * The scene is a pure function of (graph, filters); toggling a kind re-runs layout so the map
+ * re-flows around what's left instead of leaving holes. Search never hides anything — it dims
+ * non-matches, because spatial memory is the point of a map.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "./Canvas.tsx";
-import { ControlPanel } from "./ControlPanel.tsx";
 import { DetailPanel } from "./DetailPanel.tsx";
+import { Sidebar } from "./Sidebar.tsx";
 import { useCamera, useKeyboard, type ViewInsets } from "./hooks.ts";
-import {
-  blastRadius,
-  buildIndex,
-  expandToReveal,
-  searchNodes,
-  seedExpanded,
-  visibleFrontier,
-} from "./index-graph.ts";
-import { buildScene, type Scene } from "./layout.ts";
-import { rollupEdges } from "./rollup.ts";
-import { DETAIL_WIDTH, PANEL_INSET, PANEL_WIDTH, SHALLOW_EXPAND_MAX, theme } from "./theme.ts";
-import type { Filters, Graph, RolledEdge } from "./types.ts";
+import { buildScene } from "./layout.ts";
+import { DETAIL_WIDTH, PANEL_GAP, SIDEBAR_WIDTH, theme } from "./theme.ts";
+import type { EdgeKind, Filters, Graph, NodeKind, Scene } from "./types.ts";
 
-function baseFilters(diffMode: boolean): Filters {
-  return {
-    roles: new Set(),
-    comms: new Set(),
-    deadOnly: false,
-    changedOnly: diffMode ? true : null,
-  };
-}
+const NO_FILTERS: Filters = { hiddenNodeKinds: new Set(), hiddenEdgeKinds: new Set() };
 
-/** Expand every ancestor of blast nodes — caps lifted; changed-only prunes the frontier. */
-function expandBlast(index: ReturnType<typeof buildIndex>, blast: ReadonlySet<string>, prev: Set<string>): Set<string> {
-  const next = new Set(prev);
-  for (const id of blast) {
-    for (const a of index.ancestors(id)) next.add(a);
-    const parent = index.byId.get(id)?.parent;
-    if (parent) next.add(parent);
-  }
+function toggle<T>(set: ReadonlySet<T>, value: T): Set<T> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
   return next;
 }
 
 export function App({ graph }: { graph: Graph }) {
-  const diffMode = !!graph.meta.diff;
-  const index = useMemo(() => buildIndex(graph), [graph]);
-  const blast = useMemo(() => (diffMode ? blastRadius(index) : null), [diffMode, index]);
-  const seeded = useMemo(() => {
-    if (diffMode && blast && blast.size > 0) {
-      const expanded = expandBlast(index, blast, new Set());
-      return { expanded, childCaps: new Map<string, number>() };
-    }
-    return seedExpanded(index);
-  }, [index, diffMode, blast]);
-  const [expanded, setExpanded] = useState(() => seeded.expanded);
-  const [childCaps, setChildCaps] = useState(() => seeded.childCaps);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(() => baseFilters(diffMode));
-  const [search, setSearch] = useState("");
   const [scene, setScene] = useState<Scene | null>(null);
-  const [rolled, setRolled] = useState<RolledEdge[]>([]);
-  const [layouting, setLayouting] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ width: 1200, height: 800 });
-  const { camera, onWheel, onPointerDown, onPointerMove, onPointerUp, fit, focusBox } = useCamera();
-  const fittedOnce = useRef(false);
+  const { camera, onWheel, onPointerDown, onPointerMove, onPointerUp, wasDrag, fit, focusBox } = useCamera();
   const layoutGen = useRef(0);
 
   const insets: ViewInsets = useMemo(
     () => ({
-      left: panelOpen ? PANEL_INSET + PANEL_WIDTH + PANEL_INSET : PANEL_INSET + 40,
-      right: selected ? PANEL_INSET + DETAIL_WIDTH + PANEL_INSET : PANEL_INSET,
-      top: PANEL_INSET,
-      bottom: PANEL_INSET,
+      left: PANEL_GAP + SIDEBAR_WIDTH + PANEL_GAP,
+      right: selected ? PANEL_GAP + DETAIL_WIDTH + PANEL_GAP : PANEL_GAP,
+      top: PANEL_GAP,
+      bottom: PANEL_GAP,
     }),
-    [panelOpen, selected],
+    [selected],
   );
 
-  const visible = useMemo(
-    () => visibleFrontier(index, expanded, filters, childCaps, blast ?? undefined),
-    [index, expanded, filters, childCaps, blast],
-  );
-
-  const matches = useMemo(() => {
-    if (!search.trim()) return [] as ReturnType<typeof searchNodes>;
-    return searchNodes(index, search);
-  }, [index, search]);
-  const matchIds = useMemo(() => new Set(matches.map((m) => m.id)), [matches]);
-
-  // Auto-expand to reveal search hits.
-  useEffect(() => {
-    if (!search.trim() || matches.length === 0) return;
-    setExpanded((prev) => expandToReveal(index, matches.map((m) => m.id), prev));
-  }, [search, matches, index]);
-
-  // Rebuild scene when frontier changes.
+  // Layout is async (ELK); guard against out-of-order results.
   useEffect(() => {
     const gen = ++layoutGen.current;
-    setLayouting(true);
-    const vis = visibleFrontier(index, expanded, filters, childCaps, blast ?? undefined);
-    const rolledNow = rollupEdges(index, vis);
-    void buildScene(index, expanded, vis, rolledNow).then((s) => {
-      if (gen !== layoutGen.current) return;
-      setRolled(rolledNow);
-      setScene(s);
-      setLayouting(false);
+    void buildScene(graph, filters).then((s) => {
+      if (gen === layoutGen.current) setScene(s);
     });
-  }, [index, expanded, filters, childCaps, blast]);
+  }, [graph, filters]);
 
-  // Measure viewport.
+  // Track viewport size.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -123,157 +66,63 @@ export function App({ graph }: { graph: Graph }) {
     return () => ro.disconnect();
   }, []);
 
+  // Re-frame whenever a new layout arrives (first load and every filter change): the map re-flows,
+  // so the old camera position is meaningless. Hover/selection never rebuilds the scene.
+  const lastScene = useRef<Scene | null>(null);
+  useEffect(() => {
+    if (!scene || scene === lastScene.current) return;
+    lastScene.current = scene;
+    fit({ width: scene.width, height: scene.height }, view, insets);
+  }, [scene, fit, view, insets]);
+
   const fitScene = useCallback(() => {
-    if (!scene) return;
-    fit({ width: scene.width, height: scene.height }, view, insets);
+    if (scene) fit({ width: scene.width, height: scene.height }, view, insets);
   }, [scene, fit, view, insets]);
 
-  // Fit once after first scene.
-  useEffect(() => {
-    if (!scene || fittedOnce.current) return;
-    fittedOnce.current = true;
-    fit({ width: scene.width, height: scene.height }, view, insets);
-  }, [scene, fit, view, insets]);
-
-  // Re-frame when panel chrome toggles (after initial fit).
-  const prevPanel = useRef(panelOpen);
-  useEffect(() => {
-    if (!fittedOnce.current || !scene) return;
-    if (prevPanel.current === panelOpen) return;
-    prevPanel.current = panelOpen;
-    fit({ width: scene.width, height: scene.height }, view, insets);
-  }, [panelOpen, scene, fit, view, insets]);
-
-  const connected = useMemo(() => {
-    const focus = selected ?? hovered;
-    const set = new Set<string>();
-    if (!focus) return set;
-    for (const e of rolled) {
-      if (e.from === focus || e.to === focus) set.add(e.id);
+  const { matches, matchCount } = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return { matches: new Set<string>(), matchCount: 0 };
+    const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+    const hit = new Set<string>();
+    let count = 0;
+    for (const n of graph.nodes) {
+      const hay = [n.name, n.id, n.kind, n.tech ?? "", ...n.tags].join(" ").toLowerCase();
+      if (hay.includes(q)) {
+        count++;
+        hit.add(n.id);
+        // Keep ancestors readable so matches have context.
+        let parent = n.parent;
+        while (parent) {
+          hit.add(parent);
+          parent = byId.get(parent)?.parent ?? null;
+        }
+      }
     }
-    return set;
-  }, [rolled, selected, hovered]);
-
-  const toggleExpand = useCallback((id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    // Manual expand lifts the seed preview cap so the user can drill the full set.
-    setChildCaps((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-
-  const pendingFocus = useRef<string | null>(null);
+    return { matches: hit, matchCount: count };
+  }, [graph, search]);
 
   const navigateTo = useCallback(
     (id: string) => {
-      pendingFocus.current = id;
-      setExpanded((prev) => expandToReveal(index, [id], prev));
       setSelected(id);
       const box = scene?.byId.get(id);
       if (box) focusBox(box, view, insets);
     },
-    [index, scene, focusBox, view, insets],
+    [scene, focusBox, view, insets],
   );
 
-  // After expand-to-reveal finishes laying out, focus the pending node once.
-  useEffect(() => {
-    const id = pendingFocus.current;
-    if (!id || !scene) return;
-    const box = scene.byId.get(id);
-    if (box) {
-      focusBox(box, view, insets);
-      pendingFocus.current = null;
-    }
-  }, [scene, focusBox, view, insets]);
-
-  const walkables = useMemo(() => {
-    if (!scene) return [] as string[];
-    return scene.boxes
-      .slice()
-      .sort((a, b) => a.y - b.y || a.x - b.x)
-      .map((b) => b.id);
-  }, [scene]);
-
   useKeyboard({
-    onSearch: () => {
-      if (!panelOpen) setPanelOpen(true);
-      // Focus after panel mounts.
-      requestAnimationFrame(() => searchRef.current?.focus());
-    },
+    onSearch: () => searchRef.current?.focus(),
     onFit: fitScene,
-    onTogglePanel: () => setPanelOpen((o) => !o),
     onEscape: () => {
       if (document.activeElement === searchRef.current) {
         searchRef.current?.blur();
         setSearch("");
         return;
       }
-      setSelected(null);
-      setFilters(baseFilters(diffMode));
-    },
-    onArrow: (dir) => {
-      if (walkables.length === 0) return;
-      const cur = selected ? walkables.indexOf(selected) : -1;
-      let next = cur;
-      if (dir === "down" || dir === "right") next = Math.min(walkables.length - 1, cur + 1);
-      else next = Math.max(0, cur < 0 ? 0 : cur - 1);
-      const id = walkables[next];
-      if (id) setSelected(id);
-    },
-    onEnter: () => {
-      if (!selected) return;
-      const kids = index.children.get(selected);
-      if (kids && kids.length > 0) toggleExpand(selected);
+      if (search) setSearch("");
+      else setSelected(null);
     },
   });
-
-  const toggleRole = (role: string) => {
-    setFilters((f) => {
-      const roles = new Set(f.roles);
-      if (roles.has(role)) roles.delete(role);
-      else roles.add(role);
-      if (roles.has(role)) {
-        const ids = index.graph.nodes.filter((n) => n.roles.includes(role)).map((n) => n.id);
-        setExpanded((prev) => {
-          let next = expandToReveal(index, ids.slice(0, 80), prev);
-          for (const id of ids.slice(0, 20)) {
-            for (const a of index.ancestors(id)) {
-              const kids = index.children.get(a)?.length ?? 0;
-              if (kids > SHALLOW_EXPAND_MAX) next.add(a);
-            }
-          }
-          return next;
-        });
-        // Drop seed caps on huge ancestors so filter pruning owns the frontier.
-        setChildCaps((prev) => {
-          if (prev.size === 0) return prev;
-          const next = new Map(prev);
-          for (const id of ids.slice(0, 20)) {
-            for (const a of index.ancestors(id)) next.delete(a);
-          }
-          return next;
-        });
-      }
-      return { ...f, roles };
-    });
-  };
-
-  const toggleComms = (comms: string) => {
-    setFilters((f) => {
-      const set = new Set(f.comms);
-      if (set.has(comms)) set.delete(comms);
-      else set.add(comms);
-      return { ...f, comms: set };
-    });
-  };
 
   return (
     <div
@@ -283,16 +132,16 @@ export function App({ graph }: { graph: Graph }) {
         width: "100%",
         height: "100%",
         overflow: "hidden",
-        background: theme.bg,
-        color: theme.text,
+        background: theme.canvas,
+        color: theme.ink,
         fontFamily: theme.fontSans,
-        cursor: "grab",
       }}
       onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onClick={(e) => {
+        if (wasDrag.current) return;
         if ((e.target as HTMLElement).closest("[data-node], [data-ui]")) return;
         setSelected(null);
       }}
@@ -300,72 +149,33 @@ export function App({ graph }: { graph: Graph }) {
       {scene && (
         <Canvas
           scene={scene}
-          rolled={rolled}
-          index={index}
           camera={camera}
-          view={view}
           selected={selected}
           hovered={hovered}
-          matches={matchIds}
-          filters={filters}
-          connected={connected}
+          matches={matches}
+          searchActive={search.trim().length > 0}
           onSelect={setSelected}
           onHover={setHovered}
-          onToggle={toggleExpand}
         />
       )}
 
-      <ControlPanel
+      <Sidebar
         ref={searchRef}
-        index={index}
+        graph={graph}
         filters={filters}
         search={search}
-        matchCount={matches.length}
-        visibleCount={visible.size}
-        open={panelOpen}
-        onToggleOpen={() => setPanelOpen((o) => !o)}
+        matchCount={matchCount}
         onSearch={setSearch}
-        onToggleRole={toggleRole}
-        onToggleComms={toggleComms}
-        onToggleDead={() => setFilters((f) => ({ ...f, deadOnly: !f.deadOnly }))}
-        onToggleChangedOnly={() =>
-          setFilters((f) => {
-            if (f.changedOnly === null) return f;
-            const next = !f.changedOnly;
-            if (next && blast) {
-              setExpanded((prev) => expandBlast(index, blast, prev));
-              setChildCaps(new Map());
-            }
-            return { ...f, changedOnly: next };
-          })
+        onToggleNodeKind={(kind: NodeKind) =>
+          setFilters((f) => ({ ...f, hiddenNodeKinds: toggle(f.hiddenNodeKinds, kind) }))
         }
-        onClearFilters={() => setFilters(baseFilters(diffMode))}
+        onToggleEdgeKind={(kind: EdgeKind) =>
+          setFilters((f) => ({ ...f, hiddenEdgeKinds: toggle(f.hiddenEdgeKinds, kind) }))
+        }
+        onShowEverything={() => setFilters(NO_FILTERS)}
       />
 
-      <DetailPanel index={index} selected={selected} onNavigate={navigateTo} onClose={() => setSelected(null)} />
-
-      {layouting && (
-        <div
-          data-ui
-          style={{
-            position: "absolute",
-            bottom: 12,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: theme.panel,
-            border: `1px solid ${theme.border}`,
-            borderRadius: theme.radius,
-            padding: "6px 12px",
-            fontFamily: theme.fontMono,
-            fontSize: 11,
-            color: theme.textMuted,
-            zIndex: 3,
-            pointerEvents: "none",
-          }}
-        >
-          laying out…
-        </div>
-      )}
+      <DetailPanel graph={graph} selected={selected} onNavigate={navigateTo} onClose={() => setSelected(null)} />
     </div>
   );
 }

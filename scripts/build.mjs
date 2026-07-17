@@ -1,9 +1,10 @@
 /**
  * Build for publishing: bundle the CLI + library to `dist/`, prebuild the viewer to `dist/viewer.js`
- * (so installed users never bundle at runtime), and copy the report template.
+ * (so installed users never bundle the viewer at runtime), and copy the report template.
  */
 import { build } from "esbuild";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,9 +13,8 @@ const dist = join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, "report"), { recursive: true });
 
-// Node entrypoints: bundle app code, keep heavy runtime deps external (resolved from node_modules).
-const external = ["typescript", "elkjs", "esbuild"];
-
+// Node entrypoints: bundle app code; esbuild stays external (it is the one runtime dependency,
+// used to load user definition files).
 await build({
   entryPoints: [join(root, "src/cli.ts"), join(root, "src/index.ts")],
   outdir: dist,
@@ -22,12 +22,11 @@ await build({
   platform: "node",
   format: "esm",
   target: "node18",
-  external,
-  banner: { js: "" },
+  external: ["esbuild"],
   logLevel: "info",
 });
 
-// Browser viewer: fully self-contained IIFE (React inlined), read by report.ts at scan time.
+// Browser viewer: fully self-contained IIFE (React + ELK inlined), read by report.ts at render time.
 await build({
   entryPoints: [join(root, "src/viewer/main.tsx")],
   outfile: join(dist, "viewer.js"),
@@ -43,4 +42,12 @@ await build({
 
 cpSync(join(root, "src/report/template.html"), join(dist, "report/template.html"));
 
-console.log("built → dist/ (cli.js, index.js, viewer.js, report/template.html)");
+// Type declarations for the public API (`import { defineSystem } from "chorograph"`).
+execSync("npx tsc -p tsconfig.build.json", { cwd: root, stdio: "inherit" });
+// Source uses explicit `.ts` specifiers (allowImportingTsExtensions); consumers need `.js`.
+for (const f of ["index.d.ts", "core/define.d.ts", "core/model.d.ts"]) {
+  const p = join(dist, f);
+  writeFileSync(p, readFileSync(p, "utf8").replaceAll('.ts"', '.js"'));
+}
+
+console.log("built → dist/ (cli.js, index.js, index.d.ts, viewer.js, report/template.html)");

@@ -1,73 +1,68 @@
 # chorograph design principles
 
-The map is the product. It has to feel like an instrument a principal engineer reaches for, not a
-generated infographic. Two rules govern everything: **earn every pixel**, and **read like the system
-actually runs**.
+The map is the product. It has to feel like a technical drawing a staff engineer keeps pinned above
+their desk — not a generated infographic. Two rules govern everything: **earn every pixel**, and
+**say exactly what was declared, nothing more**.
 
-## The register we're aiming for
+## Declared, not scanned
 
-Observable, Linear, Vercel dashboards, Datadog's service map, `git` itself. Calm, dense, fast,
-typographic. The opposite of a landing-page hero.
+chorograph refuses to guess. There is no import scanning, no folder heuristics, no annotation
+grammar hidden in comments. A map is authored with `defineSystem` and renders exactly those nodes
+and edges. This is a design principle, not just an implementation choice:
 
-## Tell-tale signs of AI design — banned
+- **Trust.** A reader can act on the map because a human asserted every line on it.
+- **Vocabulary.** Because nodes are declared, the kind set can stay small and closed — eleven
+  kinds, six verbs — and every kind can afford its own icon and hue.
+- **Reviewability.** The definition is code; changes to the architecture show up in diffs of the
+  definition file, reviewed like everything else.
 
-These read as "a model made this." Do not ship any of them:
+## Everything visible, always
 
-- Purple→blue (or any) gradient backgrounds, hero glows, mesh gradients.
-- Glassmorphism: frosted translucent panels, `backdrop-filter` blur everywhere.
-- Emoji as UI (🚀 icons on buttons, ✨ next to headings). Icons are a considered set or none.
-- Everything rounded and drop-shadowed. Corners are subtle (≤6px) or square; shadows are rare.
-- Rainbow category colors with no system — 16 hues assigned arbitrarily.
-- Centered everything, huge whitespace wrapping three words of content.
-- Inter/■ default with one size and one weight doing all the work.
-- Tooltips that restate the label. Copy that says "Powered by AI" or "Beautiful, modern".
-- Fake 3D blobs, isometric illustrations, confetti, "AI-generated" abstract art.
+No expand/collapse, no level-of-detail, no “drill in to find out”. Declared maps are small (tens to
+a few hundred nodes) because humans write them, so the honest presentation is the whole system at
+once, laid out deterministically. Spatial memory is the point of a map: things must stay where they
+are. Consequences:
 
-## What we do instead
+- **Filters remove, search dims.** Hiding a kind re-runs layout so the map re-flows cleanly.
+  Search never moves anything — it dims non-matches so your sense of place survives.
+- **Layout is deterministic.** Same definition → same picture, every run (ELK, fixed seed). A map
+  you cannot memorise is not a map.
 
-**Type.** A real scale (e.g. 11 / 12 / 13 / 16 / 20). Identifiers, counts, and anything from the code
-are **monospace** (`ui-monospace, SFMono-Regular, Menlo`). Prose/labels are a clean sans. Weight and
-size carry hierarchy, not color.
+## The look: a technical drawing
 
-**Color is semantic, not decorative.** One near-black background, one paper for panels, one hairline
-border color, two text tiers. Node/role colors come from a **small, fixed, perceptually-even palette**
-(≤10 hues, e.g. an OKLCH ramp) mapped deterministically to roles, with a stable legend. Deprecated =
-one warning hue; orphan/unreachable = one muted "dead" treatment (desaturated + dashed), never a new
-rainbow. Diff review reuses the same calm set: **added** = muted green, **removed** = muted red
-(ghosted/dashed), **touched** = ochre/amber outline — unchanged nodes recede further. Same input →
-same colors every run.
+Light, paper-like, typographic. White cards on cool gray (`#F2F4F7`) with a faint dot grid, 1px ink
+borders, corners ≤8px, shadows barely-there. The register is Linear, Observable, a well-set
+datasheet — the opposite of a landing-page hero.
 
-**Lines carry direction and meaning.** Every edge is directed (arrowhead). Default state: thin,
-low-contrast, so the graph is legible as a whole. On hover/select of a node, its edges light up and
-everything else recedes. Edge color encodes `comms` (in-proc / http / sql / llm / …) from the same
-fixed palette; edge thickness encodes rolled-up weight. Route edges cleanly (orthogonal/curved via the
-precomputed layout), never a straight-line hairball.
+**Colour is vocabulary, not decoration.** Each node kind owns exactly one hue (used in its icon
+chip, everywhere); each edge verb owns one colour + line style (`reads` is dashed green, `writes`
+solid green, `emits`/`consumes` amber, `calls` ink, `uses` dotted gray). Nothing else on the page
+is coloured. If a screenshot reads as “rainbow dashboard template”, it's wrong.
 
-**Density with hierarchy.** Show a lot, but nested. The default view is collapsed to top regions; you
-drill in. Labels truncate with ellipsis at a fixed width; counts and role dots ride along the edge of a
-container. No modal-heavy flows — a single persistent detail panel.
+**Icons are a considered set.** One stroke-only line icon per kind (cube = service, cylinder =
+database, bolt = event, plug = endpoint, …), drawn on a shared 16×16 grid at a shared stroke
+weight, shown identically on the canvas, in the legend, and in the detail panel. Learned once,
+read everywhere. No emoji, no mixed icon packs.
 
-**Motion is functional.** Expand/collapse and focus transitions are quick (120–180ms) and eased.
-Nothing loops, pulses, or floats idly. Reduced-motion is respected.
+**Type.** Sans for names and prose; monospace for identifiers, counts, tech labels, and shortcut
+hints. Weight and size carry hierarchy, not colour.
 
-**Keyboard-first.** `/` focuses search. Arrow/enter to walk the tree. `f` fit, `Esc` clears selection.
-Everything reachable without a mouse.
+**Lines carry direction and meaning.** Every edge is directed, orthogonally routed with rounded
+elbows, and labelled with its verb on hover. Default edges are quiet; hover/selection lights the
+relevant ones and fades the rest. Never a straight-line hairball.
 
-## Performance is a design constraint
+## Interaction: three ideas, no modes
 
-"Extremely smooth even for very large things" is non-negotiable. The strategy is architectural, not a
-faster renderer:
+1. **The legend is the filter.** One list, always visible, doubles as show/hide. No separate
+   filter UI to learn, nothing folded into dropdowns.
+2. **Hover asks “what does this touch?”** — edges light, verbs appear.
+3. **Click asks “what is this?”** — the detail panel answers in sentences, and every name in it
+   navigates.
 
-- **Collapse-first + level-of-detail.** Never render 10k nodes. Render the expanded frontier
-  (hundreds), roll everything else up into its container. In **diff mode**, default to changed
-  nodes + one-hop neighbors (blast radius) so a 5k-line PR stays legible.
-- **Precomputed layout** (in the CLI, via ELK) so the browser never blocks laying out.
-- **Viewport culling.** Only draw what's on screen; virtualize the tree/panels.
-- **Rolled-up edges.** When a container is collapsed, its cross-boundary edges aggregate into one
-  weighted edge, not N.
-- 60fps pan/zoom on a 5k-symbol graph on a laptop is the bar.
+Keyboard: `/` search, `f` fit, `esc` clear. That's the whole surface — if a feature needs a
+tutorial, it doesn't ship.
 
 ## The one-line test
 
-If a screenshot could be mistaken for a generic "AI dashboard" template, it's wrong. If it looks like
-a tool you'd find in a staff engineer's terminal history, it's right.
+If a screenshot could be mistaken for a generic AI-dashboard template, it's wrong. If it could be
+mistaken for a page out of a very good engineering notebook, it's right.

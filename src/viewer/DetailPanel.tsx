@@ -1,267 +1,259 @@
 /**
- * Persistent detail panel for the selected node.
+ * Detail panel — everything the map knows about the selected node, written as sentences.
  *
- * @chorograph group="Viewer" role=component comms=in-proc
+ * Connections are listed in both directions with their verb (“reads → orders-db”, “← called by
+ * gateway”), and every named node navigates on click, so the panel doubles as a way to walk the
+ * graph without hunting on the canvas.
  */
-import type { GraphIndex } from "./index-graph.ts";
-import { DETAIL_WIDTH, PANEL_INSET, roleColor, theme } from "./theme.ts";
+import { KindIcon } from "./icons.tsx";
+import { DETAIL_WIDTH, EDGE, KIND, PANEL_GAP, theme } from "./theme.ts";
+import type { Edge, Graph, Node } from "./types.ts";
 
 interface Props {
-  index: GraphIndex;
+  graph: Graph;
   selected: string | null;
   onNavigate: (id: string) => void;
   onClose: () => void;
 }
 
-export function DetailPanel({ index, selected, onNavigate, onClose }: Props) {
+export function DetailPanel({ graph, selected, onNavigate, onClose }: Props) {
   if (!selected) return null;
-  const node = index.byId.get(selected);
+  const node = graph.nodes.find((n) => n.id === selected);
   if (!node) return null;
 
-  const parent = node.parent ? index.byId.get(node.parent) : null;
-  const inbound = index.inbound.get(selected) ?? [];
-  const outbound = index.outbound.get(selected) ?? [];
-  const dead =
-    index.deprecated.has(selected) || node.status === "deprecated"
-      ? "deprecated"
-      : index.orphan.has(selected)
-        ? "orphan"
-        : index.unreachable.has(selected)
-          ? "unreachable"
-          : null;
+  const k = KIND[node.kind];
+  const parent = node.parent ? graph.nodes.find((n) => n.id === node.parent) : null;
+  const children = graph.nodes.filter((n) => n.parent === node.id);
+  const outbound = graph.edges.filter((e) => e.from === node.id);
+  const inbound = graph.edges.filter((e) => e.to === node.id);
 
   return (
     <aside
       data-ui
       style={{
         position: "absolute",
-        top: PANEL_INSET,
-        right: PANEL_INSET,
+        top: PANEL_GAP,
+        right: PANEL_GAP,
         width: DETAIL_WIDTH,
-        maxHeight: `calc(100% - ${PANEL_INSET * 2}px)`,
+        maxHeight: `calc(100% - ${PANEL_GAP * 2}px)`,
         overflow: "auto",
         background: theme.panel,
         border: `1px solid ${theme.border}`,
-        borderRadius: theme.radius,
-        fontFamily: theme.fontSans,
-        color: theme.text,
+        borderRadius: 10,
+        boxShadow: theme.shadow,
         zIndex: 2,
+        fontFamily: theme.fontSans,
+        color: theme.ink,
       }}
     >
-      <div
+      <header
         style={{
           display: "flex",
           alignItems: "flex-start",
-          gap: 8,
-          padding: "12px 14px",
+          gap: 10,
+          padding: "14px 16px",
           borderBottom: `1px solid ${theme.border}`,
         }}
       >
+        <span
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: k.chip,
+            color: k.color,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            marginTop: 1,
+          }}
+        >
+          <KindIcon kind={node.kind} size={17} />
+        </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word" }}>{node.label}</div>
-          <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
-            {node.containment}
-            {node.diff ? ` · ${node.diff}` : ""}
-            {dead ? ` · ${dead}` : ""}
+          <div style={{ fontSize: 14, fontWeight: 650, wordBreak: "break-word" }}>{node.name}</div>
+          <div style={{ fontSize: 11.5, color: theme.inkMuted, marginTop: 2 }}>
+            {k.label}
+            {node.tech ? ` · ${node.tech}` : ""}
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
+          aria-label="Close details"
           style={{
             background: "transparent",
             border: "none",
-            color: theme.textFaint,
+            color: theme.inkFaint,
             cursor: "pointer",
             fontSize: 16,
             lineHeight: 1,
             padding: 4,
           }}
-          aria-label="Close"
         >
           ×
         </button>
-      </div>
-
-      <Block label="id">
-        <Mono>{node.id}</Mono>
-      </Block>
-
-      {parent && (
-        <Block label="parent">
-          <Link onClick={() => onNavigate(parent.id)}>{parent.label}</Link>
-          <span style={{ color: theme.textFaint, marginLeft: 6, fontFamily: theme.fontMono, fontSize: 11 }}>
-            {parent.containment}
-          </span>
-        </Block>
-      )}
-
-      {node.group && (
-        <Block label="group">
-          <Mono>{node.group}</Mono>
-        </Block>
-      )}
-
-      {node.roles.length > 0 && (
-        <Block label="roles">
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {node.roles.map((r) => (
-              <span
-                key={r}
-                style={{
-                  fontFamily: theme.fontMono,
-                  fontSize: 11,
-                  color: theme.text,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: theme.radius,
-                  padding: "2px 6px",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span style={{ width: 6, height: 6, background: roleColor(r) }} />
-                {r}
-              </span>
-            ))}
-          </div>
-        </Block>
-      )}
-
-      {node.comms.length > 0 && (
-        <Block label="comms">
-          <Mono>{node.comms.join(", ")}</Mono>
-        </Block>
-      )}
-
-      <Block label="status">
-        <span style={{ color: dead === "deprecated" ? theme.warning : theme.text }}>{node.status}</span>
-      </Block>
-
-      {(node.file || node.line) && (
-        <Block label="source">
-          <Mono>
-            {node.file ?? "?"}
-            {node.line != null ? `:${node.line}` : ""}
-          </Mono>
-        </Block>
-      )}
+      </header>
 
       {node.description && (
-        <Block label="description">
-          <div style={{ fontSize: 12, lineHeight: 1.45, color: theme.textMuted }}>{node.description}</div>
-        </Block>
+        <p style={{ margin: 0, padding: "12px 16px 0", fontSize: 12.5, lineHeight: 1.55, color: theme.inkMuted }}>
+          {node.description}
+        </p>
       )}
 
-      <EdgeList title={`outbound · ${outbound.length}`} edges={outbound} end="to" index={index} onNavigate={onNavigate} />
-      <EdgeList title={`inbound · ${inbound.length}`} edges={inbound} end="from" index={index} onNavigate={onNavigate} />
+      {node.tags.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 16px 0" }}>
+          {node.tags.map((t) => (
+            <span
+              key={t}
+              style={{
+                fontFamily: theme.fontMono,
+                fontSize: 10.5,
+                color: theme.inkMuted,
+                background: theme.canvas,
+                borderRadius: 4,
+                padding: "2px 7px",
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {parent && (
+        <Section label="Lives in">
+          <NodeLink node={parent} onNavigate={onNavigate} />
+        </Section>
+      )}
+
+      {children.length > 0 && (
+        <Section label={`Contains · ${children.length}`}>
+          {children.map((c) => (
+            <NodeLink key={c.id} node={c} onNavigate={onNavigate} />
+          ))}
+        </Section>
+      )}
+
+      {outbound.length > 0 && (
+        <Section label={`Outgoing · ${outbound.length}`}>
+          {outbound.map((e) => (
+            <EdgeRow key={e.id} edge={e} otherId={e.to} direction="out" graph={graph} onNavigate={onNavigate} />
+          ))}
+        </Section>
+      )}
+
+      {inbound.length > 0 && (
+        <Section label={`Incoming · ${inbound.length}`}>
+          {inbound.map((e) => (
+            <EdgeRow key={e.id} edge={e} otherId={e.from} direction="in" graph={graph} onNavigate={onNavigate} />
+          ))}
+        </Section>
+      )}
+
+      <div style={{ padding: "10px 16px 14px", fontFamily: theme.fontMono, fontSize: 10, color: theme.inkFaint }}>
+        {node.id}
+      </div>
     </aside>
   );
 }
 
-function EdgeList({
-  title,
-  edges,
-  end,
-  index,
-  onNavigate,
-}: {
-  title: string;
-  edges: readonly { id: string; from: string; to: string; comms: string; weight: number }[];
-  end: "from" | "to";
-  index: GraphIndex;
-  onNavigate: (id: string) => void;
-}) {
-  if (edges.length === 0) return null;
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ padding: "10px 14px", borderTop: `1px solid ${theme.border}` }}>
+    <div style={{ padding: "12px 16px 0" }}>
       <div
         style={{
           fontSize: 10,
-          color: theme.textFaint,
+          fontWeight: 650,
+          color: theme.inkFaint,
           textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 8,
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 180, overflow: "auto" }}>
-        {edges.slice(0, 50).map((e) => {
-          const id = end === "to" ? e.to : e.from;
-          const n = index.byId.get(id);
-          return (
-            <button
-              key={e.id}
-              type="button"
-              onClick={() => onNavigate(id)}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "baseline",
-                background: "transparent",
-                border: "none",
-                color: theme.text,
-                cursor: "pointer",
-                padding: "3px 0",
-                fontSize: 12,
-                textAlign: "left",
-              }}
-            >
-              <span style={{ fontFamily: theme.fontMono, fontSize: 10, color: theme.textFaint, minWidth: 52 }}>
-                {e.comms}
-                {e.weight > 1 ? `×${e.weight}` : ""}
-              </span>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {n?.label ?? id}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Block({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ padding: "8px 14px" }}>
-      <div
-        style={{
-          fontSize: 10,
-          color: theme.textFaint,
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          marginBottom: 4,
+          letterSpacing: "0.07em",
+          marginBottom: 6,
         }}
       >
         {label}
       </div>
-      {children}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{children}</div>
     </div>
   );
 }
 
-function Mono({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontFamily: theme.fontMono, fontSize: 11, color: theme.textMuted, wordBreak: "break-all" }}>{children}</div>;
-}
-
-function Link({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function NodeLink({ node, onNavigate }: { node: Node; onNavigate: (id: string) => void }) {
+  const k = KIND[node.kind];
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onNavigate(node.id)}
       style={{
-        background: "none",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        background: "transparent",
         border: "none",
-        color: theme.accent,
+        borderRadius: theme.radius,
+        padding: "4px 6px",
+        margin: "0 -6px",
         cursor: "pointer",
-        padding: 0,
-        fontSize: 12,
+        fontSize: 12.5,
         fontFamily: theme.fontSans,
+        color: theme.ink,
+        textAlign: "left",
       }}
     >
-      {children}
+      <span style={{ color: k.color, display: "inline-flex", flexShrink: 0 }}>
+        <KindIcon kind={node.kind} size={13} />
+      </span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
+      <span style={{ fontSize: 10.5, color: theme.inkFaint, marginLeft: "auto" }}>{k.label}</span>
+    </button>
+  );
+}
+
+function EdgeRow({
+  edge,
+  otherId,
+  direction,
+  graph,
+  onNavigate,
+}: {
+  edge: Edge;
+  otherId: string;
+  direction: "in" | "out";
+  graph: Graph;
+  onNavigate: (id: string) => void;
+}) {
+  const other = graph.nodes.find((n) => n.id === otherId);
+  const e = EDGE[edge.kind];
+  return (
+    <button
+      type="button"
+      onClick={() => other && onNavigate(other.id)}
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: 8,
+        background: "transparent",
+        border: "none",
+        borderRadius: theme.radius,
+        padding: "4px 6px",
+        margin: "0 -6px",
+        cursor: "pointer",
+        fontSize: 12.5,
+        fontFamily: theme.fontSans,
+        color: theme.ink,
+        textAlign: "left",
+      }}
+    >
+      <span style={{ fontFamily: theme.fontMono, fontSize: 10.5, color: e.color, minWidth: 66, flexShrink: 0 }}>
+        {direction === "out" ? `${edge.kind} →` : `← ${edge.kind}`}
+      </span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {other?.name ?? otherId}
+      </span>
+      {edge.label && (
+        <span style={{ fontSize: 10.5, color: theme.inkFaint, marginLeft: "auto", flexShrink: 0 }}>{edge.label}</span>
+      )}
     </button>
   );
 }
