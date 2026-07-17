@@ -22,6 +22,8 @@ export function useCamera() {
   const dragging = useRef<{ px: number; py: number; cx: number; cy: number } | null>(null);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("[data-ui]")) return; // panels scroll their own content, never the camera
     e.preventDefault();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const mx = e.clientX - rect.left;

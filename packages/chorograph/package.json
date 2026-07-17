@@ -1,6 +1,6 @@
 {
   "name": "chorograph",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Architecture in doc comments — annotate your services, databases, and events where they live; get a clear, shareable map. No imports, no config, nothing executed.",
   "type": "module",
   "license": "MIT",
