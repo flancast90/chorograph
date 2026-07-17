@@ -17,7 +17,10 @@
  *     export async function placeOrder() { … }
  *
  * One node tag per comment; edge tags attach to it. `@service` / `@database` / `@domain` set the
- * file context, so members declared later in the same file don't need to repeat their parent.
+ * file context, so members declared later in the same file don't need to repeat their parent;
+ * `@of <parent>` does the same for files whose parent is declared elsewhere (a routes file in a
+ * big service). Containment nests as deep as the design does — functions inside endpoints, jobs,
+ * or other functions; endpoint groups; a cache owned by one service — governed by one kind matrix.
  * Targets are referenced by name (`session-cache`), dotted path (`orders-db.orders`), and must
  * resolve uniquely — dangling references are errors, which is what keeps the map honest.
  */
@@ -66,10 +69,36 @@ const NODE_TAGS: Readonly<Record<string, NodeKind>> = {
 const EDGE_TAGS: ReadonlySet<EdgeKind> = new Set(["calls", "reads", "writes", "emits", "consumes", "uses"]);
 
 const isChorographTag = (tag: string): boolean =>
-  tag === "system" || tag in NODE_TAGS || EDGE_TAGS.has(tag as EdgeKind);
+  tag === "system" || tag === "of" || tag in NODE_TAGS || EDGE_TAGS.has(tag as EdgeKind);
+
+/**
+ * What can live inside what — the whole hierarchy in one table. Domains group the map; services
+ * own their surfaces, internals, and private infrastructure; endpoints group (REST resources)
+ * and contain the functions that implement them; functions decompose into functions.
+ */
+const CONTAINS: Readonly<Record<NodeKind, readonly NodeKind[]>> = {
+  domain: ["domain", "service", "database", "cache", "bucket", "queue", "event", "external"],
+  service: ["endpoint", "function", "job", "database", "cache", "bucket", "queue"],
+  endpoint: ["endpoint", "function"],
+  function: ["function"],
+  job: ["function"],
+  database: ["table"],
+  table: [],
+  cache: [],
+  bucket: [],
+  queue: [],
+  event: [],
+  external: [],
+};
+
+const canContain = (parent: NodeKind, child: NodeKind): boolean => CONTAINS[parent].includes(child);
+
+/** Kinds that make no sense floating free — they must resolve to a parent. */
+const MEMBER_KINDS: ReadonlySet<NodeKind> = new Set(["endpoint", "function", "job", "table"]);
 
 const slug = (v: string): string =>
   v
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2") // camelCase symbol names read as words in ids
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "node";
@@ -260,16 +289,27 @@ export function buildGraph(
   const at = (file: string, line: number): string => `${file}:${line}`;
 
   let system: { name: string; description?: string } | null = null;
+  let sawAnnotations = false;
   const pendings: PendingNode[] = [];
 
   for (const src of sources) {
     const blocks = extractBlocks(src.path, src.text);
-    const ctx: { domain?: PendingNode; service?: PendingNode; database?: PendingNode } = {};
+    if (blocks.length > 0) sawAnnotations = true;
+    // File context: members attach to the nearest preceding container of the right sort, so a
+    // service's file never repeats itself. `@of <parent>` covers files whose parent lives
+    // elsewhere — the routes/ file of a large service, tables split out of their database's file.
+    const ctx: {
+      domain?: PendingNode;
+      service?: PendingNode;
+      database?: PendingNode;
+      fileRef?: { text: string; file: string; line: number };
+    } = {};
 
     for (const block of blocks) {
       const nodeTags = block.tags.filter((t) => t.name in NODE_TAGS);
       const edgeTags = block.tags.filter((t) => EDGE_TAGS.has(t.name as EdgeKind));
       const systemTag = block.tags.find((t) => t.name === "system");
+      const ofTag = block.tags.find((t) => t.name === "of");
 
       if (systemTag) {
         const { name } = splitNameAndKeys(systemTag.text);
@@ -284,6 +324,19 @@ export function buildGraph(
         }
         if (nodeTags.length > 0 || edgeTags.length > 0) {
           errors.push(`${at(block.file, block.line)}: give @system its own comment — other tags found next to it`);
+        }
+        continue;
+      }
+
+      if (ofTag) {
+        if (nodeTags.length > 0) {
+          errors.push(
+            `${at(block.file, ofTag.line)}: @of is a file directive and gets its own comment — on a node, use the of: key instead (@${nodeTags[0]!.name} … of:${ofTag.text.trim() || "<parent>"})`,
+          );
+        } else if (!ofTag.text.trim()) {
+          errors.push(`${at(block.file, ofTag.line)}: @of needs a parent, e.g. @of api-gateway`);
+        } else {
+          ctx.fileRef = { text: ofTag.text.trim(), file: block.file, line: ofTag.line };
         }
         continue;
       }
@@ -333,31 +386,31 @@ export function buildGraph(
         edges: [],
       };
 
-      // Parent wiring: explicit key beats file context; members must end up somewhere.
+      // Parent wiring, in fixed precedence: an explicit `in:`/`of:` key beats everything; then
+      // the file's own context (the @service above a member, the @database above a table, the
+      // @domain above anything a domain holds); then the file's @of directive. Members that end
+      // up nowhere are errors — an endpoint floating outside any service is not architecture.
+      const explicit = keys.of ?? keys.in;
       const mutable = pending as { parentRef?: PendingNode["parentRef"]; ctxParent?: PendingNode };
-      if (kind === "endpoint" || kind === "function" || kind === "job") {
-        if (keys.of !== undefined) mutable.parentRef = { text: keys.of, file: block.file, line: tag.line };
-        else if (ctx.service) mutable.ctxParent = ctx.service;
-        else {
-          errors.push(
-            `${at(block.file, tag.line)}: @${tag.name} "${name}" has no service — declare @service earlier in the file, or add of:<service>`,
-          );
-          continue;
-        }
-      } else if (kind === "table") {
-        if (keys.in !== undefined) mutable.parentRef = { text: keys.in, file: block.file, line: tag.line };
-        else if (ctx.database) mutable.ctxParent = ctx.database;
-        else {
-          errors.push(
-            `${at(block.file, tag.line)}: @table "${name}" has no database — declare @database earlier in the file, or add in:<database>`,
-          );
-          continue;
-        }
-      } else if (kind !== "domain") {
-        if (keys.in !== undefined) mutable.parentRef = { text: keys.in, file: block.file, line: tag.line };
-        else if (ctx.domain) mutable.ctxParent = ctx.domain;
-      } else if (keys.in !== undefined) {
-        mutable.parentRef = { text: keys.in, file: block.file, line: tag.line };
+      const ctxParentFor = (k: NodeKind): PendingNode | undefined => {
+        if (k === "endpoint" || k === "function" || k === "job") return ctx.service;
+        if (k === "table") return ctx.database;
+        if (k === "domain") return undefined; // domains nest only explicitly
+        return ctx.service && canContain("service", k) ? ctx.service : ctx.domain;
+      };
+      const ctxParent = ctxParentFor(kind);
+      if (explicit !== undefined) {
+        mutable.parentRef = { text: explicit, file: block.file, line: tag.line };
+      } else if (ctxParent) {
+        mutable.ctxParent = ctxParent;
+      } else if (ctx.fileRef && kind !== "domain") {
+        mutable.parentRef = { ...ctx.fileRef, line: tag.line };
+      } else if (MEMBER_KINDS.has(kind)) {
+        const want = kind === "table" ? "@database" : "@service";
+        errors.push(
+          `${at(block.file, tag.line)}: @${tag.name} "${name}" has no parent — declare ${want} earlier in the file, add of:<parent>, or put a file-level \`@of <parent>\` comment at the top`,
+        );
+        continue;
       }
 
       if (kind === "domain") ctx.domain = pending;
@@ -394,29 +447,60 @@ export function buildGraph(
 
   // ── resolve parents and ids ──
 
-  const parentKindFor = (kind: NodeKind): NodeKind =>
-    kind === "table" ? "database" : kind === "endpoint" || kind === "function" || kind === "job" ? "service" : "domain";
-
+  // A parent reference is a name (`api-gateway`) or dotted path (`orders.post-orders`), matched
+  // against every node that the containment matrix allows as a parent. Same resolution rules as
+  // edge targets, so there is one way to refer to a node everywhere.
   const resolveParent = (p: PendingNode): PendingNode | null => {
-    if (p.parentRef) {
-      const want = parentKindFor(p.kind);
-      const wantSlug = slug(p.parentRef.text);
-      const candidates = pendings.filter((q) => q.kind === want && slug(q.name) === wantSlug);
-      if (candidates.length === 1) return candidates[0]!;
-      if (candidates.length === 0) {
-        const known = pendings.filter((q) => q.kind === want).map((q) => q.name);
+    const ref = p.parentRef;
+    if (!ref) {
+      const ctx = p.ctxParent ?? null;
+      if (ctx && !canContain(ctx.kind, p.kind)) {
+        errors.push(`${at(p.file, p.line)}: a ${ctx.kind} cannot contain a ${p.kind}`);
+        return null;
+      }
+      return ctx;
+    }
+
+    const rawSegments = ref.text.split(/[./]/).filter(Boolean);
+    const segments = rawSegments.map(slug);
+    const last = segments.at(-1) ?? "";
+    const named = pendings.filter((q) => q !== p && slug(q.name) === last);
+    let candidates = named.filter((q) => canContain(q.kind, p.kind));
+    if (segments.length > 1) {
+      const path = segments.join("/");
+      candidates = candidates.filter((q) => {
+        const id = idOf(q);
+        return id === path || id.endsWith("/" + path);
+      });
+    }
+    // Case decides ties: `in:Identity` means the domain Identity, not the service identity.
+    if (candidates.length > 1) {
+      const exact = candidates.filter((q) => q.name === rawSegments.at(-1));
+      if (exact.length === 1) candidates = exact;
+    }
+
+    if (candidates.length === 1) return candidates[0]!;
+    if (candidates.length === 0) {
+      if (named.length > 0) {
+        const kinds = [...new Set(named.map((q) => q.kind))].join("/");
         errors.push(
-          `${at(p.parentRef.file, p.parentRef.line)}: no ${want} named "${p.parentRef.text}"` +
-            (known.length > 0 ? ` — known ${want}s: ${known.join(", ")}` : ""),
+          `${at(ref.file, ref.line)}: "${ref.text}" (${kinds}) cannot contain a ${p.kind}`,
         );
       } else {
+        const known = [...new Set(pendings.filter((q) => canContain(q.kind, p.kind)).map((q) => q.name))].slice(0, 8);
         errors.push(
-          `${at(p.parentRef.file, p.parentRef.line)}: several ${want}s are named "${p.parentRef.text}" — give them distinct names`,
+          `${at(ref.file, ref.line)}: no parent named "${ref.text}" for ${p.kind} "${p.name}"` +
+            (known.length > 0 ? ` — things that could contain it: ${known.join(", ")}` : ""),
         );
       }
-      return null;
+    } else {
+      errors.push(
+        `${at(ref.file, ref.line)}: parent "${ref.text}" is ambiguous — matches ${candidates
+          .map((q) => idOf(q))
+          .join(", ")}. Qualify it, e.g. ${idOf(candidates[0]!).split("/").slice(-2).join(".")}`,
+      );
     }
-    return p.ctxParent ?? null;
+    return null;
   };
 
   const idOf = (p: PendingNode): string => {
@@ -464,6 +548,12 @@ export function buildGraph(
         if (q.id === form || q.id!.endsWith("/" + form)) matches.add(q);
       }
     }
+    // Case decides ties, same as parent references: `Identity` the domain, `identity` the service.
+    if (matches.size > 1) {
+      const lastRaw = token.split(/[./]/).filter(Boolean).at(-1) ?? token;
+      const exact = [...matches].filter((q) => q.name === lastRaw || q.name === token);
+      if (exact.length === 1) return exact;
+    }
     return [...matches];
   };
 
@@ -508,7 +598,7 @@ export function buildGraph(
     }
   }
 
-  if (pendings.length === 0 && !system) {
+  if (!sawAnnotations) {
     errors.push(
       `no annotations found in ${sources.length} file${sources.length === 1 ? "" : "s"} — declare architecture in doc comments (@system, @service, @endpoint, …)`,
     );

@@ -44,14 +44,45 @@ export async function placeOrder(items: OrderItem[]): Promise<Order> { … }
 | `@cache` / `@bucket` / `@queue` | Redis / S3 / SQS and friends | |
 | `@event order.placed` | a named domain event | dots in the name are fine |
 | `@external Stripe` | a third party you don't operate | |
+| `@of parent` | file directive, own comment | everything below attaches to `parent` |
 
 Every node tag also accepts `tech:"PostgreSQL 16"` (quote values with spaces) and
-`tags:critical,pci`. `in:` puts a thing inside a domain; `of:` puts an endpoint/fn/job inside a
-service other than the file's own.
+`tags:critical,pci`. `in:` and `of:` are the same key — "my parent is" — written whichever way
+reads better (`in:Billing`, `of:api-gateway`).
 
-**File context:** declaring `@service` (or `@database`, `@domain`) sets the context for the rest
-of the file — `@endpoint`/`@fn`/`@job` comments below it attach automatically. Put the `@service`
-comment at the top of the service's file. One service per file is the pattern.
+## Hierarchy
+
+Containment nests as deep as the design does, governed by one matrix:
+
+| container | can hold |
+| --- | --- |
+| domain | domains, services, databases, caches, buckets, queues, events, externals |
+| service | endpoints, functions, jobs, and its private databases/caches/buckets/queues |
+| endpoint | endpoints (resource groups), functions |
+| function | functions |
+| job | functions |
+| database | tables |
+
+How a node finds its parent, in precedence order:
+
+1. **An explicit `in:`/`of:` key** — a name (`of:api-gateway`) or dotted path when the name isn't
+   unique (`of:orders.post-orders`). Case decides ties: `in:Identity` is the domain, `identity`
+   the service.
+2. **File context** — the `@service` above a member, the `@database` above a table, the `@domain`
+   above anything a domain holds. Declare the service at the top of its file and members below
+   need nothing.
+3. **The file's `@of` directive** — a comment of its own, `/** @of api-gateway */`, near the top
+   of a file whose parent is declared elsewhere. This is how a large service splits into
+   `routes/*.ts` files: the service is declared once, each routes file carries one `@of`.
+
+Members (`@endpoint`, `@fn`, `@job`, `@table`) with no parent are errors — an endpoint floating
+outside any service is not architecture.
+
+Use depth to show *where in the design* something lives: a function that implements one
+endpoint's rule goes inside that endpoint (`@fn of:post-orders`); a helper the whole service
+shares sits directly under the service; a cache only one service touches is declared after that
+service's `@service` comment so it renders inside the service, and any other service reading it
+is visibly reaching into private infrastructure.
 
 ## Edge tags
 

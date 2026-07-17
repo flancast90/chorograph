@@ -13,12 +13,6 @@ const pool = (url: string): Pool => ({ query: async () => [void url] });
 /** @database identity-db in:Identity tech:"PostgreSQL 16" tables:users,sessions */
 export const identityDb = pool("postgres://identity");
 
-/**
- * Hot session lookups so token validation never hits Postgres.
- * @cache session-cache in:Identity tech:Redis
- */
-export const sessionCache = new Map<string, string>();
-
 /** @database catalog-db in:Catalog tech:"PostgreSQL 16" tables:products,price_history */
 export const catalogDb = pool("postgres://catalog");
 

@@ -23,14 +23,6 @@ interface Order {
 const orderStore = new Map<string, Order>();
 
 /**
- * The single source of truth for order arithmetic.
- * @fn
- */
-export function calculateTotal(items: readonly OrderItem[]): number {
-  return items.reduce((sum, i) => sum + i.quantity * i.unitPriceCents, 0);
-}
-
-/**
  * @endpoint POST /orders
  * @writes orders-db.orders
  * @writes orders-db.order_items
@@ -49,6 +41,15 @@ export async function placeOrder(items: OrderItem[]): Promise<Order> {
   orderStore.set(order.id, order);
   await new PaymentsService().charge(order.id, order.totalCents);
   return order;
+}
+
+/**
+ * The single source of truth for order arithmetic — nested inside the endpoint that owns it,
+ * so the map shows *where in the design* the rule lives.
+ * @fn of:post-orders
+ */
+export function calculateTotal(items: readonly OrderItem[]): number {
+  return items.reduce((sum, i) => sum + i.quantity * i.unitPriceCents, 0);
 }
 
 /**

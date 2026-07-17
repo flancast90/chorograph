@@ -105,10 +105,26 @@ connections, with free text after the target becoming the edge label — the *wh
 | `@event order.placed` | a named domain event | — |
 | `@external Stripe` | a third party you don't operate | — |
 
-Keys on any node tag: `in:Domain` (containment), `of:service` (for members declared outside
-their service's file), `tech:"PostgreSQL 16"`, `tags:critical,pci`. `@fn` and `@job` take their
-name from the function they document when you don't give one. Declaring `@service` (or
-`@database`) sets the context for the rest of the file, so members don't repeat their parent.
+Keys on any node tag: `in:`/`of:` (both mean "my parent is" — write whichever reads better),
+`tech:"PostgreSQL 16"`, `tags:critical,pci`. `@fn` and `@job` take their name from the function
+they document when you don't give one.
+
+**Hierarchy nests as deep as the design does.** Domains hold domains, services, and shared
+infrastructure; services hold endpoints, functions, jobs, and their *private* databases, caches,
+and queues; endpoints hold functions (and endpoints, for resource groups); functions and jobs
+decompose into functions. Three ways a node finds its parent, in precedence order:
+
+1. An explicit `in:`/`of:` key — a name, or a dotted path (`of:orders.post-orders`) when the
+   name isn't unique. Case decides ties: `in:Identity` is the domain, `identity` the service.
+2. File context — the `@service` declared above a member, the `@database` above a table, the
+   `@domain` above anything a domain holds.
+3. A file-level `@of` directive — `/** @of api-gateway */` in its own comment, for files whose
+   parent is declared elsewhere. That's how a large service splits into `routes/*.ts` files:
+   declare the service once, give each routes file one `@of` line.
+
+So a rule that belongs to one endpoint renders inside it, a cache only one service touches
+renders inside that service, and a monorepo with hundreds of surfaces stays one map with real
+depth instead of a flat sea of boxes.
 
 **Edge tags** — six verbs, declared on the node doing the verb, each drawn in its own colour and
 line style:

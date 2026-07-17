@@ -18,6 +18,13 @@ interface Session {
 
 // In-memory stand-ins for the real stores, so the example runs anywhere.
 const users = new Map<string, User>();
+
+/**
+ * Hot session lookups so token validation never hits Postgres. Declared after @service in this
+ * file, so it lives *inside* identity — other services reading it are visibly reaching into
+ * identity's private infrastructure.
+ * @cache session-cache tech:Redis
+ */
 const sessions = new Map<string, Session>();
 
 /**

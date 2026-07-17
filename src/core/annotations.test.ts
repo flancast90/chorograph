@@ -68,8 +68,8 @@ class Worker {
 }
 `),
     ]);
-    expect(g.nodes.map((n) => n.id)).toContain("api/computetax");
-    expect(g.nodes.map((n) => n.id)).toContain("api/nightlysweep");
+    expect(g.nodes.map((n) => n.id)).toContain("api/compute-tax");
+    expect(g.nodes.map((n) => n.id)).toContain("api/nightly-sweep");
   });
 
   it("attaches members to the file's @service context, and honours of: overrides", () => {
@@ -90,6 +90,128 @@ export function fees() {}
     ]);
     expect(g.nodes.map((n) => n.id)).toContain("orders/post-orders");
     expect(g.nodes.map((n) => n.id)).toContain("payments/fees");
+  });
+});
+
+describe("hierarchy", () => {
+  it("nests functions inside endpoints, jobs, and other functions", () => {
+    const g = buildGraph([
+      src(`
+/** @service orders */
+
+/** @endpoint POST /orders */
+export async function place() {}
+
+/** @fn of:post-orders */
+export function validateCart() {}
+
+/** @fn of:validateCart */
+export function checkInventory() {}
+
+/** @job sweeper */
+export async function sweep() {}
+
+/** @fn of:sweeper */
+export function isExpired() {}
+`),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining([
+        "orders/post-orders/validate-cart",
+        "orders/post-orders/validate-cart/check-inventory",
+        "orders/sweeper/is-expired",
+      ]),
+    );
+  });
+
+  it("nests endpoints inside endpoints (resource groups)", () => {
+    const g = buildGraph([
+      src(`
+/** @service gateway */
+/** @endpoint /lists */
+/** @endpoint GET /lists of:lists */
+/** @endpoint POST /lists of:lists */
+export {};
+`),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(["gateway/lists", "gateway/lists/get-lists", "gateway/lists/post-lists"]),
+    );
+  });
+
+  it("puts service-private infrastructure inside the service", () => {
+    const g = buildGraph([
+      src(`
+/** @domain Billing */
+/** @service invoicing in:Billing */
+
+/** @cache dedupe-cache tech:Redis */
+export const cache = new Map();
+
+/** @database scratch-db tables:staging */
+export const db = {};
+`),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining([
+        "billing/invoicing/dedupe-cache",
+        "billing/invoicing/scratch-db",
+        "billing/invoicing/scratch-db/staging",
+      ]),
+    );
+  });
+
+  it("attaches members to the file's @of directive when the parent lives elsewhere", () => {
+    const g = buildGraph([
+      src(`/** @service gateway */\nexport {};`, "main.ts"),
+      src(
+        `
+/** @of gateway */
+
+/** @endpoint GET /lists */
+export async function list() {}
+
+/** @fn */
+export function toDto() {}
+`,
+        "routes/lists.ts",
+      ),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(["gateway/get-lists", "gateway/to-dto"]),
+    );
+  });
+
+  it("lets @of point at an endpoint group in another file", () => {
+    const g = buildGraph([
+      src(`/** @service gateway */\n/** @endpoint /lists */\nexport {};`, "router.ts"),
+      src(`/** @of gateway.lists */\n\n/** @endpoint GET /lists */\nexport async function list() {}`, "lists.ts"),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toContain("gateway/lists/get-lists");
+  });
+
+  it("resolves dotted parent paths when the bare name is ambiguous", () => {
+    const g = buildGraph([
+      src(`
+/** @domain A */
+/** @service api in:A */
+/** @domain B */
+/** @service api in:B */
+/** @fn health of:a.api */
+export function health() {}
+`),
+    ]);
+    expect(g.nodes.map((n) => n.id)).toContain("a/api/health");
+  });
+
+  it("rejects @of next to a node tag", () => {
+    expect(() => buildGraph([src(`/** @service s\n * @of x */\nexport {};`)])).toThrow(/file directive/);
+  });
+
+  it("rejects containment cycles", () => {
+    expect(() =>
+      buildGraph([src(`/** @domain A in:B */\n/** @domain B in:A */\nexport {};`)]),
+    ).toThrow(/contained in itself/);
   });
 });
 
@@ -175,12 +297,18 @@ export function xb() {}
 
 describe("problems that keep the map honest", () => {
   it("rejects a member with no service in scope", () => {
-    expect(() => buildGraph([src(`/** @endpoint GET /x */\nexport function x() {}`)])).toThrow(/has no service/);
+    expect(() => buildGraph([src(`/** @endpoint GET /x */\nexport function x() {}`)])).toThrow(/has no parent/);
   });
 
-  it("rejects unknown in: parents and lists the known ones", () => {
+  it("rejects unknown in: parents and lists plausible containers", () => {
     expect(() => buildGraph([src(`/** @domain A */\n/** @service s in:B */\nexport {};`)])).toThrow(
-      /no domain named "B" — known domains: A/,
+      /no parent named "B" for service "s" — things that could contain it: A/,
+    );
+  });
+
+  it("rejects parents the containment matrix forbids", () => {
+    expect(() => buildGraph([src(`/** @external Stripe */\n/** @fn fees of:Stripe */\nexport {};`)])).toThrow(
+      /"Stripe" \(external\) cannot contain a function/,
     );
   });
 
