@@ -1,8 +1,18 @@
-# chorograph
+<p align="center">
+  <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/hero.png" width="760" alt="An abstract architecture map drawn as a technical illustration">
+</p>
 
-Architecture declared in doc comments. Annotate your services, databases, and events in the
-comments you'd write anyway, and get a clear, shareable map of your system — down to individual
-functions — without importing anything, wrapping anything, or executing anything.
+<h1 align="center">chorograph</h1>
+
+<p align="center">Architecture maps drawn from your doc comments.</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/chorograph"><img src="https://img.shields.io/npm/v/chorograph?color=2e6f6a" alt="npm version"></a>
+  <a href="https://github.com/flancast90/Chorograph/actions/workflows/ci.yml"><img src="https://github.com/flancast90/Chorograph/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/flancast90/Chorograph/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/chorograph?color=555" alt="MIT license"></a>
+</p>
+
+Annotate services, databases, and events in the comments you already write. chorograph parses those comments (the TypeScript compiler, parse only, nothing executed) and renders a self-contained HTML map of your system, down to individual functions. No imports. No wrappers. No config. Your code stays exactly as it was.
 
 ```ts
 /**
@@ -13,7 +23,7 @@ functions — without importing anything, wrapping anything, or executing anythi
  * @calls payments.post-charge charge at checkout, in-process for now
  */
 export async function placeOrder(items: OrderItem[]): Promise<Order> {
-  // your real code, exactly as it was
+  // your real code, untouched
 }
 ```
 
@@ -21,19 +31,23 @@ export async function placeOrder(items: OrderItem[]): Promise<Order> {
 npx chorograph render src
 ```
 
-chorograph deliberately does **not** infer architecture. Import graphs answer “which file requires
-which file”, which is rarely the question; an architecture map should answer “what are the parts
-of this system, how do they talk, and *why*”. So the input is the doc comment: the one place that
-already sits next to the code, already gets updated with it, and can carry intent (“so
-notifications can react”) that no scanner could ever infer. (If you want a scanned import graph,
-that's a different tool — reach for tree-sitter.)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/map.png" width="820" alt="The rendered report: four domains containing services, endpoints, functions, databases, and events, with typed edges between them">
+</p>
 
-The scanner parses your source with the TypeScript compiler — **parse only, nothing runs**.
-Annotated code doesn't need to be side-effect free, importable, or even type-correct.
+## Why comments
+
+Import scanners answer "which file requires which file". That is rarely the question. An architecture map should say what the parts are, how they talk, and why. The doc comment is the one place that already sits next to the code, already gets updated with it, and can hold intent that no scanner could infer: `@emits order.placed so notifications can react`.
+
+Because the input is comments, the scanner never runs your code. Annotated files don't have to be importable, side-effect free, or even type-correct. And because every reference has to resolve, the map can't quietly rot: rename a table and the next render fails with the file and line of every comment still pointing at the old name.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/comments-to-map.png" width="700" alt="A source file with a highlighted comment block flowing into a small architecture map">
+</p>
 
 ## Quick start
 
-Anchor the map once, anywhere (free-standing comments are fine):
+Anchor the map once, in any file. Free-standing comments are fine:
 
 ```ts
 // src/architecture.ts
@@ -58,7 +72,7 @@ export const db = createPool(process.env.ORDERS_DB_URL);
 export const ORDER_PLACED = "order.placed";
 ```
 
-Annotate each service at the top of its file — members below attach to it automatically:
+Declare each service at the top of its file. Everything below attaches to it automatically:
 
 ```ts
 /**
@@ -66,129 +80,87 @@ Annotate each service at the top of its file — members below attach to it auto
  * @service orders in:Commerce tech:Node.js
  * @consumes payment.captured marks the order paid
  */
-
-/**
- * The single source of truth for order arithmetic.
- * @fn
- */
-export function calculateTotal(items: readonly OrderItem[]): number { … }
 ```
 
-Then render:
+Then render. You get `.chorograph/graph.json` plus a `report.html` with zero network dependencies, so you can commit it, attach it to a design doc, or send it to a teammate:
 
 ```bash
 npx chorograph render src
 ```
 
-That scans the comments and writes `.chorograph/graph.json` plus a self-contained
-`.chorograph/report.html` (no network dependencies — commit it, attach it to a design doc, send
-it to a teammate).
-
 ## The grammar
 
-One comment declares one node; the prose becomes its description; edge tags below it declare its
-connections, with free text after the target becoming the edge label — the *why*.
+One comment declares one node. The prose becomes its description. Edge tags below it declare connections, and free text after a target becomes the edge label:
 
-**Node tags** — a small closed set; each kind has one icon and one colour everywhere:
-
-| tag | what it declares | contains |
-| --- | --- | --- |
-| `@system Name` | the map's title (once per codebase) | — |
-| `@domain Name` | a bounded context | anything |
-| `@service name` | a deployable process | endpoints, functions, jobs |
-| `@endpoint POST /orders` | an API surface | — |
-| `@fn [name]` | an architecturally significant function | — |
-| `@job [name]` | scheduled or background work | — |
-| `@database name` | a database (`tables:a,b` declares its tables inline) | tables |
-| `@table name` | a table / collection | — |
-| `@cache` / `@bucket` / `@queue` | Redis / S3 / SQS and friends | — |
-| `@event order.placed` | a named domain event | — |
-| `@external Stripe` | a third party you don't operate | — |
-
-Keys on any node tag: `in:`/`of:` (both mean "my parent is" — write whichever reads better),
-`tech:"PostgreSQL 16"`, `tags:critical,pci`. `@fn` and `@job` take their name from the function
-they document when you don't give one.
-
-**Hierarchy nests as deep as the design does.** Domains hold domains, services, and shared
-infrastructure; services hold endpoints, functions, jobs, and their *private* databases, caches,
-and queues; endpoints hold functions (and endpoints, for resource groups); functions and jobs
-decompose into functions. Three ways a node finds its parent, in precedence order:
-
-1. An explicit `in:`/`of:` key — a name, or a dotted path (`of:orders.post-orders`) when the
-   name isn't unique. Case decides ties: `in:Identity` is the domain, `identity` the service.
-2. File context — the `@service` declared above a member, the `@database` above a table, the
-   `@domain` above anything a domain holds.
-3. A file-level `@of` directive — `/** @of api-gateway */` in its own comment, for files whose
-   parent is declared elsewhere. That's how a large service splits into `routes/*.ts` files:
-   declare the service once, give each routes file one `@of` line.
-
-So a rule that belongs to one endpoint renders inside it, a cache only one service touches
-renders inside that service, and a monorepo with hundreds of surfaces stays one map with real
-depth instead of a flat sea of boxes.
-
-**Edge tags** — six verbs, declared on the node doing the verb, each drawn in its own colour and
-line style:
-
-| tag | meaning |
+| tag | declares |
 | --- | --- |
-| `@calls target [why]` | request/response |
-| `@reads target [why]` / `@writes target [why]` | store access |
-| `@emits event [why]` / `@consumes event [why]` | event flow (target must be an event or queue) |
-| `@uses target [why]` | escape hatch when no verb fits |
+| `@system Name` | the map's title, once per codebase |
+| `@domain Name` | a bounded context |
+| `@service name` | a deployable process |
+| `@endpoint POST /orders` | an API surface |
+| `@fn [name]` | a function that matters architecturally |
+| `@job [name]` | scheduled or background work |
+| `@database name` | a database; `tables:a,b` declares its tables inline |
+| `@table name` | a table or collection |
+| `@cache` / `@bucket` / `@queue` | Redis, S3, SQS, and friends |
+| `@event order.placed` | a named domain event |
+| `@external Stripe` | a third party you don't operate |
+| `@of parent` | file directive: everything below attaches to `parent` |
 
-Targets are names: bare when unique (`session-cache`, `Stripe`, `order.placed`), dot-qualified
-when not (`orders-db.orders`, `payments.post-charge`). Every target must resolve to exactly one
-node — a typo, a rename, or a deleted table fails the render with `file:line` and suggestions.
-That error is the freshness mechanism: the map refuses to build from stale facts.
+Six edge verbs, declared on the node doing the verb: `@calls`, `@reads`, `@writes`, `@emits`, `@consumes`, `@uses`. Targets are names, bare when unique (`session-cache`, `Stripe`), dotted when not (`orders-db.orders`). Node tags also accept `tech:"PostgreSQL 16"` and `tags:critical,pci`. `@fn` and `@job` take the documented function's name when you leave theirs out.
+
+## Hierarchy
+
+Containment nests as deep as the design does. Domains hold services and shared infrastructure. Services hold endpoints, jobs, functions, and their private databases, caches, and queues. Endpoints group into resources and hold the functions that implement them. Functions decompose into functions.
+
+A node finds its parent three ways, in order:
+
+1. An explicit `in:` / `of:` key (they're the same key; write whichever reads better). Use a dotted path when a bare name is ambiguous: `of:orders.post-orders`. Case settles ties between a domain `Identity` and a service `identity`.
+2. File context: the `@service` above a member, the `@database` above a table, the `@domain` above the rest.
+3. A file-level `@of` directive. Large services split across `routes/*.ts` files declare the service once; each file carries a single `/** @of api-gateway */` comment.
+
+So a pricing rule renders inside the endpoint that owns it, a cache one service touches renders inside that service, and a monorepo with hundreds of surfaces stays one map with real depth.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/flancast90/Chorograph/main/docs/assets/detail.png" width="820" alt="The detail panel for an endpoint, listing what it contains, its connections in both directions, and the file and line where it was declared">
+</p>
 
 ## The viewer
 
-Everything is always visible — there is no expand/collapse to fight with. The layout is computed
-once (ELK, deterministic) and the viewer stays out of your way:
+Everything is always visible. No expand-and-collapse to fight with, and the layout is deterministic (ELK, fixed seed), so the same code produces the same picture every run.
 
-- **Legend = filters.** The sidebar lists every kind present with its icon and count; click to
-  show/hide that kind. Hiding re-runs layout so the map re-flows instead of leaving holes.
-- **Hover** a node to light up its connections and fade the rest, with the verb labelled on each
-  lit edge.
-- **Click** a node for the detail panel: description, tech, contents, every connection in both
-  directions as clickable sentences (`reads → orders-db`, `← called by api-gateway`), and the
-  `file:line` where it was declared.
-- **Search** (`/`) dims non-matches instead of hiding them — spatial memory is the point of a map.
-- `f` fits the view, `esc` clears, drag pans, scroll zooms.
+- The legend is the filter: click a kind to show or hide it, and the map re-flows.
+- Hover a node to light up its connections with the verb labelled on each edge.
+- Click for the detail panel: description, contents, every connection in both directions as clickable sentences, and the `file:line` of the declaring comment.
+- Search (`/`) dims non-matches instead of hiding them. `f` fits the view, `esc` clears.
 
 ## CLI
 
 ```
-chorograph render <paths…>   scan doc comments → graph.json + report.html (default command)
-chorograph serve <paths…>    serve the report; re-scans the code on every refresh
+chorograph render <paths…>   scan doc comments, write graph.json + report.html
+chorograph serve <paths…>    serve the report, re-scanning on every refresh
 ```
-
-Paths are files or directories (walked recursively; `node_modules`, `dist`, dotfiles, and
-`*.test.*` are skipped). `.ts`, `.tsx`, `.js`, `.jsx`, `.mts`, `.cts` and friends are scanned.
 
 | flag | effect |
 | --- | --- |
 | `--out <dir>` | output directory (default: `.chorograph` next to the first path) |
-| `--json` | write `graph.json` only; print meta to stdout; no HTML |
+| `--json` | write `graph.json` only, print meta to stdout |
 | `--no-open` | don't open the report after rendering |
 | `--port <n>` | port for `serve` (default `4123`) |
 | `--quiet` | suppress progress output |
 
-## Give your coding agent the skill
+Paths are files or directories, walked recursively. `node_modules`, `dist`, dotfiles, and test files are skipped.
 
-[`docs/SKILL.md`](docs/SKILL.md) is an agent skill that teaches an LLM to annotate architecture
-as it writes code — the grammar, where annotations go, and a granularity rubric for
-function-level nodes. Drop it into your skills directory (Cursor, Claude Code, etc.) and code
-written in your codebase keeps the map current as a side effect of normal documentation.
+## Working with coding agents
+
+[`docs/SKILL.md`](docs/SKILL.md) teaches an LLM the grammar, the hierarchy rules, and a rubric for when a function deserves an `@fn`. Drop it into your skills directory (Cursor, Claude Code, and similar) and code written in your codebase keeps the map current as a side effect of normal documentation. Agents contributing to chorograph itself should read [`AGENTS.md`](AGENTS.md).
 
 ## Example
 
-[`examples/streamline/`](examples/streamline/) is a fictional e-commerce platform written the way
-a real annotated codebase looks — an architecture anchor, infra and event modules, and seven
-services (including a class-based one) with working implementations and zero chorograph imports:
+[`examples/streamline/`](examples/streamline/) is a small fictional e-commerce platform written the way an annotated codebase looks in practice: an architecture anchor, infra and event modules, seven services including a class-based one and a routes file that uses `@of`. Every implementation actually runs, and none of them import chorograph.
 
 ```bash
-pnpm example   # renders examples/streamline → examples/streamline/.chorograph/
+pnpm example
 ```
 
 ## Programmatic API
@@ -198,17 +170,14 @@ import { loadGraph, buildGraph, type Graph } from "chorograph";
 
 const graph: Graph = loadGraph(["src"]);            // scan files on disk
 const same = buildGraph([{ path: "a.ts", text }]);  // or bring your own sources
-// graph.nodes, graph.edges, graph.meta.counts — the same contract as graph.json
 ```
 
-`graph.json` is stable and boring on purpose: nodes with `id`/`name`/`kind`/`parent`/`file`,
-edges with `from`/`to`/`kind`/`label`, counts in `meta`. Pipe it wherever you like.
+`graph.json` is stable and boring on purpose: nodes with `id` / `name` / `kind` / `parent` / `file`, edges with `from` / `to` / `kind` / `label`, counts in `meta`. Pipe it wherever you like.
 
-## Design principles
+## Contributing
 
-The map is the product — calm, light, typographic; colour only where it carries meaning. See
-[`docs/design-principles.md`](docs/design-principles.md).
+Bug reports, grammar ideas, and viewer improvements are all welcome. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and conventions, and [`docs/design-principles.md`](docs/design-principles.md) for the taste the project holds itself to. Releases ship automatically: merging a version bump to `main` publishes to npm.
 
 ## License
 
-MIT.
+[MIT](LICENSE)

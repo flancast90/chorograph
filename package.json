@@ -1,6 +1,6 @@
 {
   "name": "chorograph",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Architecture in doc comments — annotate your services, databases, and events where they live; get a clear, shareable map. No imports, no config, nothing executed.",
   "type": "module",
   "license": "MIT",
@@ -46,8 +46,7 @@
     "build": "node scripts/build.mjs",
     "prepare": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint ."
+    "test": "vitest run"
   },
   "dependencies": {
     "typescript": "^5.7.2"

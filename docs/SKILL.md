@@ -6,16 +6,16 @@ description: Declare software architecture in doc comments so the codebase alway
 # Declaring architecture with chorograph
 
 chorograph renders an architecture map from **doc comments on the real code**. Nothing is
-imported or executed — the tags below are the entire mechanism. Your job when writing code in a
+imported or executed; the tags below are the entire mechanism. Your job when writing code in a
 chorograph codebase: every architecturally significant thing you create or change must carry its
 annotation, in the same comment where you'd document it anyway. The map is generated with
-`chorograph render <dirs>` — it shows exactly what is annotated, nothing else. Undeclared code is
+`chorograph render <dirs>`, and it shows exactly what is annotated, nothing else. Undeclared code is
 invisible; stale edges are lies. Both are bugs you prevent by following this skill.
 
 ## The shape of an annotation
 
 One comment declares one node, plus that node's edges. The prose becomes the node's description;
-free text after an edge target becomes the edge's label — use it to say **why**:
+free text after an edge target becomes the edge's label. Use it to say **why**:
 
 ```ts
 /**
@@ -47,7 +47,7 @@ export async function placeOrder(items: OrderItem[]): Promise<Order> { … }
 | `@of parent` | file directive, own comment | everything below attaches to `parent` |
 
 Every node tag also accepts `tech:"PostgreSQL 16"` (quote values with spaces) and
-`tags:critical,pci`. `in:` and `of:` are the same key — "my parent is" — written whichever way
+`tags:critical,pci`. `in:` and `of:` are the same key ("my parent is"), written whichever way
 reads better (`in:Billing`, `of:api-gateway`).
 
 ## Hierarchy
@@ -65,17 +65,17 @@ Containment nests as deep as the design does, governed by one matrix:
 
 How a node finds its parent, in precedence order:
 
-1. **An explicit `in:`/`of:` key** — a name (`of:api-gateway`) or dotted path when the name isn't
+1. **An explicit `in:`/`of:` key**: a name (`of:api-gateway`) or dotted path when the name isn't
    unique (`of:orders.post-orders`). Case decides ties: `in:Identity` is the domain, `identity`
    the service.
-2. **File context** — the `@service` above a member, the `@database` above a table, the `@domain`
+2. **File context**: the `@service` above a member, the `@database` above a table, the `@domain`
    above anything a domain holds. Declare the service at the top of its file and members below
    need nothing.
-3. **The file's `@of` directive** — a comment of its own, `/** @of api-gateway */`, near the top
+3. **The file's `@of` directive**: a comment of its own, `/** @of api-gateway */`, near the top
    of a file whose parent is declared elsewhere. This is how a large service splits into
    `routes/*.ts` files: the service is declared once, each routes file carries one `@of`.
 
-Members (`@endpoint`, `@fn`, `@job`, `@table`) with no parent are errors — an endpoint floating
+Members (`@endpoint`, `@fn`, `@job`, `@table`) with no parent are errors. An endpoint floating
 outside any service is not architecture.
 
 Use depth to show *where in the design* something lives: a function that implements one
@@ -98,8 +98,8 @@ after it is the label. Always phrase the label as the *why* or the protocol.
 
 **Targets are names, resolved when the map builds.** Use the bare name when it's unique
 (`session-cache`, `Stripe`, `order.placed`), or qualify with a dot when it isn't
-(`orders-db.orders`, `payments.post-charge` — endpoint names slug as `post-charge`). A target
-that matches nothing or several things fails the render with file:line and suggestions — that
+(`orders-db.orders`, `payments.post-charge`; endpoint names slug as `post-charge`). A target
+that matches nothing or several things fails the render with file:line and suggestions. That
 failure is the freshness check, so never silence it by deleting the edge unless the code really
 stopped doing the thing.
 
@@ -110,11 +110,11 @@ stopped doing the thing.
 2. **Edges live with the actor.** When code starts reading a table, calling a service, or
    emitting an event, add the tag to *that* code's comment. When it stops, remove the tag.
 3. **Prose first, tags after.** The sentence above the tags is the description shown in the map's
-   detail panel — write it for the next engineer.
+   detail panel. Write it for the next engineer.
 4. **`@system` exactly once**, in an architecture anchor file alongside `@domain` and `@external`
    declarations (free-standing comments with no code attached are fine).
 5. **Names are unique within their parent** and become slug ids (`orders/orders/post-orders`).
-6. **Keep names stable.** Renaming a node breaks every edge pointing at it — the render will list
+6. **Keep names stable.** Renaming a node breaks every edge pointing at it; the render will list
    them; fix them in the same commit.
 
 ## Granularity rubric for `@fn`
@@ -122,7 +122,7 @@ stopped doing the thing.
 Annotate a function when it is a *load-bearing part of the design*: it owns a rule (pricing,
 fees, auth), it is the single place something happens (template rendering, password hashing), or
 it has its own architectural edges (reads a cache, calls a third party). Do **not** annotate
-helpers, mappers, or glue — a service with thirty `@fn` nodes is noise, one with three to seven
+helpers, mappers, or glue. A service with thirty `@fn` nodes is noise, one with three to seven
 is a map.
 
 ## Verifying
