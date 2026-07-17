@@ -1,7 +1,7 @@
 # Publishes to npm whenever main carries a package.json version that isn't on the registry yet.
-# Releasing is therefore just: bump the version in a PR, merge it. Requires an NPM_TOKEN
-# repository secret (an npm automation token); provenance links the published tarball back to
-# this workflow run.
+# Releasing is therefore just: bump the version in a PR, merge it. Auth is npm trusted
+# publishing (OIDC) configured on npmjs.com for this repo + workflow file; no token secret.
+# Provenance links the published tarball back to this workflow run.
 name: Release
 
 on:
@@ -57,11 +57,13 @@ jobs:
       - if: steps.version.outputs.publish == 'true'
         run: pnpm build
 
+      # Trusted publishing (OIDC): npmjs.com > chorograph > Settings > Trusted Publisher must
+      # point at this repo and this workflow file. No token, no OTP; provenance comes with it.
       - if: steps.version.outputs.publish == 'true'
         name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm@11 # OIDC publish needs npm >= 11.5.1
+          npm publish --access public --provenance
 
       - if: steps.version.outputs.publish == 'true'
         name: Tag and create GitHub release
