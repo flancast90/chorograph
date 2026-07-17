@@ -58,10 +58,21 @@ function midpoint(points: readonly { x: number; y: number }[]): { x: number; y: 
   return { x: (mid.x + prev.x) / 2, y: (mid.y + prev.y) / 2 };
 }
 
+/**
+ * Canvas pills only preview a long edge label — the full sentence wraps in the detail panel.
+ * Cut at a word boundary so the ellipsis never splits a word.
+ */
+function previewLabel(text: string, max = 44): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const atWord = cut.slice(0, cut.lastIndexOf(" "));
+  return `${atWord || cut}…`;
+}
+
 function EdgeLine({ pe, lit, dim }: { pe: PlacedEdge; lit: boolean; dim: boolean }) {
   const style = EDGE[pe.edge.kind];
   const d = roundedPath(pe.points);
-  const label = pe.edge.label ? `${style.label} · ${pe.edge.label}` : style.label;
+  const label = pe.edge.label ? previewLabel(`${style.label} · ${pe.edge.label}`) : style.label;
   const mid = lit ? midpoint(pe.points) : null;
   return (
     <g opacity={dim ? 0.14 : lit ? 1 : 0.75}>
